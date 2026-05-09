@@ -29,7 +29,7 @@ Requires the CLI from [vercel-labs/skills](https://github.com/vercel-labs/skills
 |---|---|
 | [`openfin-setup`](./skills/openfin-setup) | First-time user, API key check, 401/412 auth errors |
 | [`openfin-troubleshooting`](./skills/openfin-troubleshooting) | "Why is this failing", allowance errors, RPC issues, setup-incomplete errors |
-| [`openfin-polymarket`](./skills/openfin-polymarket) | Markets, orderbooks, orders, approvals, positions/PnL, leaderboard, deposit / withdraw via bridge.polymarket.com |
+| [`openfin-polymarket`](./skills/openfin-polymarket) | Markets, orderbooks, orders, positions/PnL, leaderboard, deposit / withdraw via bridge.polymarket.com |
 | [`openfin-hyperliquid`](./skills/openfin-hyperliquid) | Perp/spot trading, leverage, TWAP, WS market data, unifiedAccount auto-upgrade |
 | [`openfin-relay`](./skills/openfin-relay) | Cross-chain swaps, bridging, Solana routes, bridge+call |
 | [`openfin-onchain`](./skills/openfin-onchain) | Token metadata, wallet portfolios, balances, USD prices, same-chain transfers |

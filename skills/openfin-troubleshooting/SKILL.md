@@ -27,14 +27,14 @@ deposit wallet — pUSD on the EOA is stranded for trading.
 (plain ERC-20 `transfer`, EOA pays MATIC). Going forward, route
 Polymarket-bound deposits to the deposit wallet, not the EOA.
 
-### `allowance max but CLOB returns allowance: 0`
+### `allowance: 0` / `not enough balance / allowance` after the wallet has pUSD
 
-The legacy USDC.e / V1 Exchange approval is stale. V2 settles against
-**pUSD** (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`).
+V2 settles against **pUSD** (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`),
+not USDC.e.
 
-**Fix:** Re-call `POST /agent/polymarket/approvals` (`{negRisk: true}`
-for neg-risk markets). Convert any USDC.e the wallet still holds to
-pUSD before trading.
+**Fix:** Retry the order — the order endpoints recover from this. If
+the wallet still holds USDC.e (no longer the settlement token), convert
+/ bridge it to pUSD first.
 
 ### `Order failed: tick size`
 
