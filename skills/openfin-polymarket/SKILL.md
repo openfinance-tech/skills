@@ -1,6 +1,6 @@
 ---
 name: openfin-polymarket
-description: Complete Polymarket playbook covering research and trading on the world's largest prediction market. Use this for ANY Polymarket task. Deposit-wallet model (CRITICAL)&#58; Polymarket's CLOB rejects raw EOAs as makers, so each user has a deterministic per-EOA "deposit wallet" smart contract that holds pUSD, carries allowances, and is named as `funder`/`maker`/`signer` on signed orders (POLY_1271 / EIP-1271). pUSD sent directly to the EOA is stranded for trading until it reaches the deposit wallet. Always call `GET /agent/polymarket/deposit-wallet` to get the right address before quoting "where do I deposit", checking balance, or running position queries — and pass the deposit-wallet address (NOT the EOA) as `:address` for `/user/:address/*` lookups. Research triggers&#58; finding events ("what's happening in politics", "show me election odds", "NBA finals odds", "BTC to 200k markets", "IPL / FIFA / UFC / F1 betting markets"), listing markets with filters, searching by keyword, reading orderbooks, mid prices, spreads, last trade prices, recent trades, open interest, volume, liquidity, and any user's positions/portfolio/PnL by address. Deposit triggers&#58; "where do I deposit on Polymarket", "what's my Polymarket address", "send pUSD to Polymarket", "Polymarket deposit wallet", "is my deposit wallet deployed". Withdraw triggers&#58; "withdraw from Polymarket", "cash out Polymarket", "move my pUSD off Polymarket", "send my Polymarket balance to Base / Arbitrum / Solana / etc.", "convert pUSD to USDC / ETH / SOL", "Polymarket → bridge" — handled by `POST /agent/polymarket/deposit-wallet/withdraw-and-bridge` which runs three EOA-signed phases on Polygon (deposit wallet → EOA via onlyOwner withdraw, then `pUSD.unwrap` to 1:1 native USDC, then optional Relay bridge). EOA pays a few cents in MATIC for phases 1+2; bridge is skipped if the destination is already Polygon native USDC. Leaderboard triggers&#58; "Polymarket leaderboard", "top traders on Polymarket", "Polymarket rankings", "who's winning on Polymarket today/this week/this month", "best traders by PnL / volume", "rank of <user>" — handled by `GET /agent/polymarket/leaderboard` (public) with category (OVERALL/POLITICS/SPORTS/CRYPTO/CULTURE/MENTIONS/WEATHER/ECONOMICS/TECH/FINANCE), timePeriod (DAY/WEEK/MONTH/ALL), orderBy (PNL/VOL). Trading triggers&#58; place a bet on YES or NO, buy/sell outcomes, limit orders (GTC/GTD), market orders (FOK/FAK), batch orders, cancel one/many/all orders, check and set on-chain pUSD and CTF approvals, neg-risk (multi-outcome) markets, tick size handling (0.01/0.001/0.0001), and builder-code attribution. Covers all routes under /agent/polymarket/* (events, markets, search, orderbook, price, prices, spread, last-trade-price, trades, market/:id/open-interest|volume|liquidity|trades, user/:address/positions|trades|portfolio|pnl, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, approvals, builder/*). Use when the user mentions Polymarket, prediction markets, event betting, binary outcomes, probability markets, YES/NO tokens, conditional tokens, or politics/sports/crypto/culture odds. Prerequisite&#58; openfin-setup for trading.
+description: Complete Polymarket playbook covering research and trading on the world's largest prediction market. Use this for ANY Polymarket task. Deposit-wallet model (CRITICAL)&#58; Polymarket's CLOB rejects raw EOAs as makers, so each user has a deterministic per-EOA "deposit wallet" smart contract that holds pUSD, carries allowances, and is named as `funder`/`maker`/`signer` on signed orders (POLY_1271 / EIP-1271). pUSD sent directly to the EOA is stranded for trading until it reaches the deposit wallet. Always call `GET /agent/polymarket/deposit-wallet` to get the right address before quoting "where do I deposit", checking balance, or running position queries — and pass the deposit-wallet address (NOT the EOA) as `:address` for `/user/:address/*` lookups. Research triggers&#58; finding events ("what's happening in politics", "show me election odds", "NBA finals odds", "BTC to 200k markets", "IPL / FIFA / UFC / F1 betting markets"), listing markets with filters, searching by keyword, reading orderbooks, mid prices, spreads, last trade prices, recent trades, open interest, volume, liquidity, and any user's positions/portfolio/PnL by address. Deposit triggers&#58; "where do I deposit on Polymarket", "what's my Polymarket address", "send pUSD to Polymarket", "Polymarket deposit wallet", "is my deposit wallet deployed". Withdraw triggers&#58; "withdraw from Polymarket", "cash out Polymarket", "move my pUSD off Polymarket", "send my Polymarket balance to Base / Arbitrum / Solana / etc.", "convert pUSD to USDC / ETH / SOL", "Polymarket → bridge" — handled by `POST /agent/polymarket/deposit-wallet/withdraw-and-bridge`. Phase 1&#58; the EOA signs an EIP-712 Batch authorizing one inner `pUSD.unwrap(USDC, EOA, amount)` call and submits `depositWallet.execute(batch, sig)` directly (Polymarket relayer is bypassed because its allowlist blocks `unwrap` on the collateral). On-chain, the wallet validates the EOA's signature and dispatches the unwrap — pUSD burns from the deposit wallet, native USDC mints 1:1 to the EOA. Phase 2&#58; optional Relay bridge to any chain/token, skipped when the destination already matches phase-1 output (Polygon native USDC to caller's EOA). EOA pays ~$0.001 MATIC for phase 1. Leaderboard triggers&#58; "Polymarket leaderboard", "top traders on Polymarket", "Polymarket rankings", "who's winning on Polymarket today/this week/this month", "best traders by PnL / volume", "rank of <user>" — handled by `GET /agent/polymarket/leaderboard` (public) with category (OVERALL/POLITICS/SPORTS/CRYPTO/CULTURE/MENTIONS/WEATHER/ECONOMICS/TECH/FINANCE), timePeriod (DAY/WEEK/MONTH/ALL), orderBy (PNL/VOL). Trading triggers&#58; place a bet on YES or NO, buy/sell outcomes, limit orders (GTC/GTD), market orders (FOK/FAK), batch orders, cancel one/many/all orders, check and set on-chain pUSD and CTF approvals, neg-risk (multi-outcome) markets, tick size handling (0.01/0.001/0.0001), and builder-code attribution. Covers all routes under /agent/polymarket/* (events, markets, search, orderbook, price, prices, spread, last-trade-price, trades, market/:id/open-interest|volume|liquidity|trades, user/:address/positions|trades|portfolio|pnl, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, approvals, builder/*). Use when the user mentions Polymarket, prediction markets, event betting, binary outcomes, probability markets, YES/NO tokens, conditional tokens, or politics/sports/crypto/culture odds. Prerequisite&#58; openfin-setup for trading.
 ---
 
 # Polymarket
@@ -200,22 +200,62 @@ on every order.
 
 **`GET /agent/polymarket/leaderboard`** — Top traders ranked by PnL or
 volume across a category and time window. Proxies Polymarket's Data API
-(`https://data-api.polymarket.com/v1/leaderboard`).
+(`https://data-api.polymarket.com/v1/leaderboard`). **Use this whenever
+the user asks for ranked Polymarket traders — do NOT web-fetch.**
+
+**Trigger phrases (always reach for this endpoint, never web-search):**
+"top traders", "best traders", "top profitable", "most profitable",
+"biggest winners", "top wallets", "best wallets on polymarket",
+"polymarket leaderboard", "who's making money on polymarket", "show me
+the top N traders / wallets in {topic}", "where do I rank".
+
+**Trigger → param mapping:**
+
+| User says | Param | Value |
+|---|---|---|
+| "sports" | `category` | `SPORTS` |
+| "politics" / "election" | `category` | `POLITICS` |
+| "crypto" | `category` | `CRYPTO` |
+| "culture" / "entertainment" | `category` | `CULTURE` |
+| (none / "overall") | `category` | `OVERALL` (default) |
+| "today" / "now" | `timePeriod` | `DAY` (default) |
+| "this week" | `timePeriod` | `WEEK` |
+| "this month" | `timePeriod` | `MONTH` |
+| "all time" | `timePeriod` | `ALL` |
+| "profitable" / "winners" | `orderBy` | `PNL` (default) |
+| "biggest by volume" / "most active" | `orderBy` | `VOL` |
+
+Other categories: `MENTIONS`, `WEATHER`, `ECONOMICS`, `TECH`, `FINANCE`.
 
 | Param | Type | Default | Notes |
 |---|---|---|---|
-| `category` | string | `OVERALL` | `OVERALL` / `POLITICS` / `SPORTS` / `CRYPTO` / `CULTURE` / `MENTIONS` / `WEATHER` / `ECONOMICS` / `TECH` / `FINANCE` |
-| `timePeriod` | string | `DAY` | `DAY` / `WEEK` / `MONTH` / `ALL` |
-| `orderBy` | string | `PNL` | `PNL` (profit) or `VOL` (volume) |
+| `category` | string | `OVERALL` | See mapping above |
+| `timePeriod` | string | `DAY` | See mapping above |
+| `orderBy` | string | `PNL` | See mapping above |
 | `limit` | number | `25` | 1..50 |
 | `offset` | number | `0` | 0..1000 (pagination) |
 | `user` | string | — | 0x-prefixed address — narrow to a single trader's rank |
 | `userName` | string | — | Username — same as `user` but by handle |
 
-Use for "who's winning on Polymarket today / this week", "top crypto
-traders this month", "where do I rank?" (pass `user` = the trader's
-deposit-wallet address from `GET /agent/polymarket/deposit-wallet`,
-since rankings are tracked under the on-chain maker — not the EOA).
+**Response** — returns a list of traders, each with:
+
+```json
+{
+  "rank":          1,
+  "proxyWallet":   "0x…",          // the on-chain maker (deposit wallet)
+  "userName":      "…",
+  "vol":           "1234567",
+  "pnl":           "98765",
+  "profileImage":  "https://…",
+  "xUsername":     "…",
+  "verifiedBadge": true | false
+}
+```
+
+When narrowing to a single trader's rank with `user`, pass the trader's
+**deposit-wallet** address (from `GET /agent/polymarket/deposit-wallet`'s
+`depositWallet` field) — rankings are tracked under the on-chain
+maker, not the EOA.
 
 ---
 
@@ -257,26 +297,27 @@ since rankings are tracked under the on-chain maker — not the EOA).
     `pUSD.eoa > 0`, flag it as stranded and suggest moving it over.
 
 - **`POST /agent/polymarket/deposit-wallet/withdraw-and-bridge`** —
-  One-shot "cash out of Polymarket to anywhere". Three phases, all
-  signed by the user's EOA (Polymarket's relayer is NOT used — it
-  blocks `unwrap` on the collateral token, so the backend goes around
-  it via the deposit wallet's onlyOwner withdraw helper):
+  One-shot "cash out of Polymarket to anywhere". Two phases, signed
+  by the user's EOA. Polymarket's relayer is **not** used — its
+  allowlist blocks `unwrap` on the collateral, so the unwrap is
+  routed directly through the deposit wallet's `execute(batch, sig)`
+  entry point and submitted by the EOA itself.
 
-  1. **Withdraw** — `depositWallet.withdrawERC20(pUSD, EOA, amount)`.
-     The deposit wallet exposes an onlyOwner withdraw; the EOA is the
-     wallet's CREATE2 owner so this passes without any extra signature
-     ceremony. Moves pUSD from the smart-contract deposit wallet to
-     the EOA.
-  2. **Unwrap** — `pUSD.unwrap(USDC, EOA, amount)`. The EOA burns its
-     pUSD and receives **native USDC on Polygon**
-     (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`, NOT pUSD or USDC.e)
-     1:1.
-  3. **Bridge** — Relay flow forwards USDC on Polygon → `destToken` on
+  1. **Unwrap** — the EOA signs an EIP-712 Batch authorizing one inner
+     call: `pUSD.unwrap(USDC, EOA, amount)`. EOA submits
+     `depositWallet.execute(batch, sig)`. On-chain, the wallet
+     validates the signature against the EOA (an authorized session
+     signer — note this is NOT the wallet's contract owner; that
+     remains a Polymarket-controlled address) and dispatches the call:
+     pUSD burns from the deposit wallet, **native USDC on Polygon**
+     (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`, NOT pUSD or
+     USDC.e) mints 1:1 to the EOA.
+  2. **Bridge** — Relay flow forwards USDC on Polygon → `destToken` on
      `destChainId`. **Skipped** when the destination already matches
-     phase-2 output (Polygon native USDC to the caller's EOA).
+     phase-1 output (Polygon native USDC to the caller's EOA).
 
-  Phases 1+2 cost the EOA gas — about ~$0.001 MATIC on Polygon. Phase
-  3 follows Relay's normal fee model (see `openfin-relay`).
+  Phase 1 costs the EOA gas — about ~$0.001 MATIC on Polygon. Phase 2
+  follows Relay's normal fee model (see `openfin-relay`).
 
   **Body**
 
@@ -294,20 +335,16 @@ since rankings are tracked under the on-chain maker — not the EOA).
   {
     "success": true,
     "data": {
-      "withdraw": {
-        "txHash": "0x…",                // phase 1 — deposit wallet → EOA
-        "from":   "0x…",                 // deposit wallet
-        "to":     "0x…",                 // EOA
-        "amount": "12500000"             // pUSD wei moved
-      },
       "unwrap": {
-        "txHash":     "0x…",             // phase 2 — pUSD → native USDC
-        "pUsdBurned": "12.5",
-        "usdcMinted": "12.5",
-        "usdcAsset":  "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        "txHash":        "0x…",          // phase 1 — depositWallet.execute(batch, sig)
+        "depositWallet": "0x…",          // pUSD source
+        "eoa":           "0x…",          // USDC destination
+        "pUsdBurned":    "12.5",
+        "usdcMinted":    "12.5",
+        "usdcAsset":     "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
       },
       "bridge": {
-        "skipped":       false,          // true when phase 3 isn't needed
+        "skipped":       false,          // true when phase 2 isn't needed
         "requestId":     "…",            // present only when skipped=false
         "txHashes":      ["0x…"],        // present only when skipped=false
         "destChainId":   8453,
@@ -339,9 +376,9 @@ since rankings are tracked under the on-chain maker — not the EOA).
 
     Default (`destRecipient` omitted) routes back to the caller's EOA —
     plain summary + confirmation is enough.
-  - **The EOA needs MATIC for gas.** Phases 1+2 are EOA-signed
-    transactions on Polygon. If the EOA's MATIC balance is too low to
-    cover both, the call fails — read MATIC via
+  - **The EOA needs MATIC for gas.** Phase 1 is an EOA-signed
+    transaction on Polygon. If the EOA's MATIC balance is too low,
+    the call fails — read MATIC via
     `GET /agent/polymarket/deposit-wallet` (`matic.eoa`) and surface
     the requirement before calling.
   - **Bridge skipping.** To stay on Polygon as native USDC (no bridge
