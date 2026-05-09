@@ -29,9 +29,11 @@ Requires the CLI from [vercel-labs/skills](https://github.com/vercel-labs/skills
 |---|---|
 | [`openfin-setup`](./skills/openfin-setup) | First-time user, API key check, 401/412 auth errors |
 | [`openfin-troubleshooting`](./skills/openfin-troubleshooting) | "Why is this failing", allowance errors, RPC issues, setup-incomplete errors |
-| [`openfin-polymarket`](./skills/openfin-polymarket) | Research (events, markets, orderbooks), placing orders, approvals, user positions/PnL |
+| [`openfin-polymarket`](./skills/openfin-polymarket) | Markets, orderbooks, orders, approvals, positions/PnL, leaderboard, deposit / withdraw via bridge.polymarket.com |
+| [`openfin-hyperliquid`](./skills/openfin-hyperliquid) | Perp/spot trading, leverage, TWAP, WS market data, unifiedAccount auto-upgrade |
 | [`openfin-relay`](./skills/openfin-relay) | Cross-chain swaps, bridging, Solana routes, bridge+call |
-| [`openfin-hyperliquid`](./skills/openfin-hyperliquid) | Perp/spot trading, leverage, TWAP, WS market data |
+| [`openfin-onchain`](./skills/openfin-onchain) | Token metadata, wallet portfolios, balances, USD prices, same-chain transfers |
+| [`openfin-onramp`](./skills/openfin-onramp) | Fiat → crypto via Moonpay (cards, global) or Onramp.money (UPI / IMPS, India) |
 
 ## Backend prerequisites
 
@@ -61,9 +63,13 @@ What's already in place to keep that capability safe:
   per-write user confirmation** in chat, no recipient/contract addresses
   pulled from untrusted content, re-quote on any parameter change. See
   [`SECURITY.md`](./SECURITY.md) for the repo-wide version.
-- **Bridge / withdraw recipient is server-injected** to the same user's
-  wallet on the destination chain — caller-supplied overrides are
-  rejected. **Third-party transfers are not supported.**
+- **External recipients require an explicit verbatim warning.** The
+  caller's own wallets (EVM EOA + Solana via `get_wallet_addresses`,
+  Polymarket deposit wallet via `get_deposit_wallet`) are resolved
+  before any send/bridge/withdraw write; if the destination isn't one
+  of those, the agent surfaces a bold **"⚠️ EXTERNAL TRANSFER — funds
+  cannot be recovered if the address is wrong. Type 'yes' to confirm."**
+  and proceeds only on explicit "yes" in the same turn.
 - **No secrets, scripts, or binaries in this repo** — only markdown.
   Network calls happen from the agent and the OpenFinance backend, not
   from anything installed by `npx skills add`.
