@@ -1,6 +1,6 @@
 ---
 name: openfin-polymarket
-description: Complete Polymarket playbook covering research and trading on the world's largest prediction market. Use this for ANY Polymarket task. Deposit-wallet model (CRITICAL)&#58; Polymarket's CLOB rejects raw EOAs as makers, so each user has a deterministic per-EOA "deposit wallet" smart contract that holds pUSD, carries allowances, and is named as `funder`/`maker`/`signer` on signed orders (POLY_1271 / EIP-1271). pUSD sent directly to the EOA is stranded for trading until it reaches the deposit wallet. Always call `GET /agent/polymarket/deposit-wallet` to get the right address before quoting "where do I deposit", checking balance, or running position queries — and pass the deposit-wallet address (NOT the EOA) as `:address` for `/user/:address/*` lookups. Research triggers&#58; finding events ("what's happening in politics", "show me election odds", "NBA finals odds", "BTC to 200k markets", "IPL / FIFA / UFC / F1 betting markets"), listing markets with filters, searching by keyword, reading orderbooks, mid prices, spreads, last trade prices, recent trades, open interest, volume, liquidity, and any user's positions/portfolio/PnL by address. Deposit triggers&#58; "where do I deposit on Polymarket", "what's my Polymarket address", "send pUSD to Polymarket", "Polymarket deposit wallet", "is my deposit wallet deployed". Trading triggers&#58; place a bet on YES or NO, buy/sell outcomes, limit orders (GTC/GTD), market orders (FOK/FAK), batch orders, cancel one/many/all orders, check and set on-chain pUSD and CTF approvals, neg-risk (multi-outcome) markets, tick size handling (0.01/0.001/0.0001), and builder-code attribution. Covers all routes under /agent/polymarket/* (events, markets, search, orderbook, price, prices, spread, last-trade-price, trades, market/:id/open-interest|volume|liquidity|trades, user/:address/positions|trades|portfolio|pnl, deposit-wallet, order, order/market, orders, order/:id, order/:id/scoring, approvals, builder/*). Use when the user mentions Polymarket, prediction markets, event betting, binary outcomes, probability markets, YES/NO tokens, conditional tokens, or politics/sports/crypto/culture odds. Prerequisite&#58; openfin-setup for trading.
+description: Complete Polymarket playbook covering research and trading on the world's largest prediction market. Use this for ANY Polymarket task. Deposit-wallet model (CRITICAL)&#58; Polymarket's CLOB rejects raw EOAs as makers, so each user has a deterministic per-EOA "deposit wallet" smart contract that holds pUSD, carries allowances, and is named as `funder`/`maker`/`signer` on signed orders (POLY_1271 / EIP-1271). pUSD sent directly to the EOA is stranded for trading until it reaches the deposit wallet. Always call `GET /agent/polymarket/deposit-wallet` to get the right address before quoting "where do I deposit", checking balance, or running position queries — and pass the deposit-wallet address (NOT the EOA) as `:address` for `/user/:address/*` lookups. Research triggers&#58; finding events ("what's happening in politics", "show me election odds", "NBA finals odds", "BTC to 200k markets", "IPL / FIFA / UFC / F1 betting markets"), listing markets with filters, searching by keyword, reading orderbooks, mid prices, spreads, last trade prices, recent trades, open interest, volume, liquidity, and any user's positions/portfolio/PnL by address. Deposit triggers&#58; "where do I deposit on Polymarket", "what's my Polymarket address", "send pUSD to Polymarket", "Polymarket deposit wallet", "is my deposit wallet deployed". Withdraw triggers&#58; "withdraw from Polymarket", "cash out Polymarket", "move my pUSD off Polymarket", "send my Polymarket balance to Base / Arbitrum / Solana / etc.", "convert pUSD to USDC / ETH / SOL", "Polymarket → bridge" — handled by `POST /agent/polymarket/deposit-wallet/withdraw-and-bridge` which burns pUSD on the deposit wallet (1:1 → native USDC on Polygon, gas-free via Polymarket relayer) and bridges to any Relay-supported token on any supported chain. Trading triggers&#58; place a bet on YES or NO, buy/sell outcomes, limit orders (GTC/GTD), market orders (FOK/FAK), batch orders, cancel one/many/all orders, check and set on-chain pUSD and CTF approvals, neg-risk (multi-outcome) markets, tick size handling (0.01/0.001/0.0001), and builder-code attribution. Covers all routes under /agent/polymarket/* (events, markets, search, orderbook, price, prices, spread, last-trade-price, trades, market/:id/open-interest|volume|liquidity|trades, user/:address/positions|trades|portfolio|pnl, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, approvals, builder/*). Use when the user mentions Polymarket, prediction markets, event betting, binary outcomes, probability markets, YES/NO tokens, conditional tokens, or politics/sports/crypto/culture odds. Prerequisite&#58; openfin-setup for trading.
 ---
 
 # Polymarket
@@ -37,7 +37,8 @@ This skill places real bets with real USDC. See repo-level
 [SECURITY.md](../../SECURITY.md) for the full contract.
 
 Research and read endpoints are safe. Anything that writes (`/order`,
-`/order/market`, `/orders`, `/approvals`, cancels) requires:
+`/order/market`, `/orders`, `/approvals`, cancels, `/deposit-wallet/withdraw-and-bridge`)
+requires:
 
 1. **Show the user before submitting an order:**
    - market title and outcome (YES / NO, or the named outcome on neg-risk)
@@ -56,7 +57,12 @@ Research and read endpoints are safe. Anything that writes (`/order`,
 5. **Bulk cancel (`/orders` with no filter)** affects every open order —
    confirm scope before submitting. For single cancels, echo the orderId
    back to the user.
-6. Surface any rejection (tick size, min notional, allowance) verbatim
+6. **`/deposit-wallet/withdraw-and-bridge`** moves real funds off
+   Polymarket. Show the user the pUSD amount, destination chain +
+   token, recipient (their own EOA by default), and any slippage cap.
+   Default amount = full deposit-wallet balance — confirm with the
+   user that "withdraw all" is what they want before calling.
+7. Surface any rejection (tick size, min notional, allowance) verbatim
    before retrying.
 
 ## Prerequisite (for trading; data endpoints are public)
@@ -228,6 +234,68 @@ on every order.
     a small MATIC balance on the EOA for gas.
   - When showing "Polymarket balance", quote `pUSD.depositWallet`. If
     `pUSD.eoa > 0`, flag it as stranded and suggest moving it over.
+
+- **`POST /agent/polymarket/deposit-wallet/withdraw-and-bridge`** —
+  One-shot "cash out of Polymarket to anywhere". Two phases:
+
+  1. **Unwrap** (gas-free): the Polymarket relayer batches a call to
+     `pUSD.unwrap(USDC, EOA, amount)` on the deposit wallet, burning
+     pUSD and minting **native USDC on Polygon**
+     (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`, NOT pUSD or USDC.e)
+     1:1 to the EOA.
+  2. **Bridge**: the resulting USDC is forwarded through the same
+     Relay flow as `openfin-relay` to any supported token on any
+     supported chain.
+
+  **Body**
+
+  | Field | Type | Notes |
+  |---|---|---|
+  | `destChainId` | number | **Required.** Destination chain (`137` = stay on Polygon, `8453` = Base, `42161` = Arbitrum, `792703809` = Solana, etc.). |
+  | `destToken` | string | **Required.** Any Relay-supported token on `destChainId`. Use `0x0000000000000000000000000000000000000000` for native gas. |
+  | `amount` | string | pUSD wei (6 decimals). Default = full deposit-wallet balance. |
+  | `destRecipient` | string | Default = caller's EOA. Relay still server-injects on the bridge leg. |
+  | `slippageTolerance` | string | bps, e.g. `"50"` = 0.5%. Optional. |
+
+  **Response**
+
+  ```json
+  {
+    "success": true,
+    "data": {
+      "unwrap": {
+        "txHash": "0x…",
+        "from": "0x…",                 // deposit wallet
+        "to":   "0x…",                 // EOA
+        "pUsdBurned": "12.5",
+        "usdcMinted": "12.5",
+        "usdcAsset":  "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "bridge": {
+        "requestId":     "…",
+        "txHashes":      ["0x…"],
+        "destChainId":   8453,
+        "destToken":     "0x…",
+        "destRecipient": "0x…",
+        "finalStatus":   "success" | "refunded" | "failure" | …
+      }
+    }
+  }
+  ```
+
+  Notes for the agent:
+  - **Treat this as an order-like write under the safety contract.**
+    Show the user the pUSD amount being unwrapped, the destination
+    chain + token, the recipient (their own EOA by default), and any
+    slippage cap **before** calling. Get explicit confirmation.
+  - To stay on Polygon as native USDC (no bridge step), pass
+    `destChainId: 137` and `destToken: 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`.
+  - For "withdraw everything", omit `amount`. For partial, pass wei
+    as a **string** (`"5000000"` = 5 pUSD).
+  - Phase 1 is gas-free; Phase 2 follows Relay's normal fee model
+    (see `openfin-relay`).
+  - On `bridge.finalStatus !== "success"`, surface `requestId` so the
+    user can check status via `GET /agent/relay/status?requestId=…`.
 
 ---
 
