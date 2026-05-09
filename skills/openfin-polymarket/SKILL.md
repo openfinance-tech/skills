@@ -288,6 +288,21 @@ on every order.
     Show the user the pUSD amount being unwrapped, the destination
     chain + token, the recipient (their own EOA by default), and any
     slippage cap **before** calling. Get explicit confirmation.
+  - **External recipient check.** If the user passes `destRecipient`
+    and it's NOT one of their own wallets (resolve via
+    `GET /agent/wallets` for EVM EOA + Solana and the deposit-wallet
+    address from `GET /agent/polymarket/deposit-wallet`), this is an
+    EXTERNAL transfer — surface this verbatim before calling and
+    require explicit "yes":
+
+    > **⚠️ EXTERNAL TRANSFER — withdrawing {amount} pUSD from your
+    > Polymarket deposit wallet, bridging to {destToken} on chain
+    > {destChainId}, recipient {destRecipient}. This is NOT one of
+    > your wallets. Funds cannot be recovered if the address is wrong.
+    > Type 'yes' to confirm.**
+
+    Default (`destRecipient` omitted) routes back to the caller's EOA —
+    plain summary + confirmation is enough.
   - To stay on Polygon as native USDC (no bridge step), pass
     `destChainId: 137` and `destToken: 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`.
   - For "withdraw everything", omit `amount`. For partial, pass wei
