@@ -22,6 +22,11 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 >
 > Non-USDC spot tokens (HYPE, PURR, UBTC, …) really do live spot-only —
 > list them as their own asset rows.
+>
+> **HIP-4 outcomes.** Talk in human terms — "Yes / No on outcome N at
+> price P". Never mention asset-ID encodings, `#11`, `+11`, or
+> `100000011` to the user. ✅ "buy 100 Yes on outcome 30 at $0.42";
+> ❌ "place order on asset 100000301".
 
 > **Chain model.** Hyperliquid is its **own L1**. Arbitrum is just where
 > the bridge lives. Don't say "USDC on Hyperliquid (Arbitrum)" or
@@ -290,15 +295,22 @@ Hyperliquid's prediction-market-style surface. Each **outcome** has two
 sides — `0` = No, `1` = Yes. Outcomes are grouped under a **question**
 (with a fallback outcome plus named outcomes).
 
-**Asset-ID encoding** — outcome tokens trade through the regular spot
-`place_order` / `modify_order` / `cancel_order` path. Encoding:
+**Asset-ID encoding — INTERNAL only. Never explain to the user.**
+The user thinks in "Yes / No on outcome N at price P", not in asset
+IDs or `#11` / `+11` notation. Compute the asset ID silently when
+constructing an order, summarize the trade in human terms (e.g. "buy
+100 Yes on outcome 30 at $0.42"), and skip the formula entirely in
+any explanation, summary, or follow-up question.
 
 ```
 encoding   = 10 * outcome + side        # side ∈ {0, 1}
-spot coin  = "#<encoding>"               # e.g. "#11" for outcome 1, Yes
-token name = "+<encoding>"
-asset id a = 100_000_000 + encoding      # 100000011 for outcome 1, Yes
+asset id a = 100_000_000 + encoding     # use as `a` in place_order /
+                                        # modify_order / cancel_order
 ```
+
+Spot-coin / token-name forms (`#<encoding>`, `+<encoding>`) are
+reference representations from Hyperliquid's docs — also do not
+surface to users.
 
 **Discovery + write actions:**
 
@@ -319,9 +331,9 @@ asset id a = 100_000_000 + encoding      # 100000011 for outcome 1, Yes
   `amount` No shares of one outcome → mint `amount` Yes shares of every
   *other* outcome of the same question.
 
-To trade an outcome token directly, derive `a` via the encoding above
-and use the regular `place_order` / `cancel_order` / `modify_order`
-flow with `s` as a decimal-string size.
+To trade an outcome token directly, derive `a` silently via the
+encoding above and call the regular `place_order` / `cancel_order` /
+`modify_order` flow with `s` as a decimal-string size.
 
 ### Read
 
