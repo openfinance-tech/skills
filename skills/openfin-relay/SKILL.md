@@ -100,7 +100,7 @@ Response also includes `details`, `inTxHashes`, `txHashes`, `updatedAt`,
 
 | Field | Notes |
 |---|---|
-| `originChainId`, `destinationChainId` | numbers (see cheatsheet). |
+| `originChainId`, `destinationChainId` | Chain IDs (see cheatsheet). Accept either a number or its string form (`137` or `"137"`) — backend normalizes. |
 | `originCurrency`, `destinationCurrency` | Token contracts; `0x0…0` for EVM native; SPL mint or `So11…112` for wrapped SOL on Solana. |
 | `amount` | **Smallest unit, string** (`"10000000"` = 10 USDC). |
 | `tradeType` | `EXACT_INPUT` (default for "bridge X"), `EXACT_OUTPUT` ("get me exactly Y"), or `EXPECTED_OUTPUT` (rare). |

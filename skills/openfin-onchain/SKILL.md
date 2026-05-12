@@ -88,7 +88,7 @@ the ATA on the fly — sender pays ~0.002 SOL rent.
 
 | Field | Type | Notes |
 |---|---|---|
-| `chainId` | number \| `"solana"` | EVM chain ID or the literal `"solana"`. |
+| `chainId` | number \| string \| `"solana"` | EVM chain ID — either `137` or `"137"` (backend normalizes). Use the literal `"solana"` for Solana. |
 | `tokenAddress` | string | Token contract / SPL mint. `"native"` or `0x000…0` for native gas / SOL. |
 | `to` | string | Recipient on the target chain. EVM hex / Solana base58. |
 | `amount` | string | Raw integer in smallest unit (wei / lamports / atomic). |

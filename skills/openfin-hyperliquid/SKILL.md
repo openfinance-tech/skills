@@ -1,6 +1,6 @@
 ---
 name: openfin-hyperliquid
-description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — placing/cancelling/modifying orders (perp, spot, TWAP), leverage and isolated-margin changes, account/balance reads, market data (REST + WebSocket), historical OHLCV candles, deposits, withdrawals to Arbitrum. Hyperliquid runs **unifiedAccount** mode so spot and perp USDC share one margin pool. The API exposes that balance across `/account` and `/account/spot` for legacy reasons — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable&#58; $0" or "Spot USDC" lines — those leak the API split-pool plumbing). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction&#58; "u"}` to upgrade (one-shot, idempotent, only `"u"` is accepted). Triggers&#58; "buy / long / short / sell BTC / ETH / SOL / NVDA / TSLA / etc.", "perp / spot order", "Gtc / Ioc / Alo / FrontendMarket", "TP / SL", "TWAP", "leverage / cross / isolated", "deposit / withdraw to Hyperliquid / Arbitrum", "HL balance", "HIP-3", "HLP". Covers all routes under /agent/trading/* (market/{mids,metas,perp-metas,spot-metas,l2-book,token,all-dexs-asset-ctxs}, deposit-address, account, account/spot, portfolio, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction). Prerequisite&#58; openfin-setup.
+description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, not a chain variant of Arbitrum — Arbitrum is just where the deposit address lives. Fund path&#58; USDC on Arbitrum → `GET /agent/trading/deposit-address` → L1 validators credit the HL account. Exit path&#58; withdraw_to_arbitrum burns HL USDC, validators co-sign payout to the same EOA on Arbitrum (~5 min, $1 fee). Hyperliquid accepts **only USDC** (not USDT, not USDC.e). INR funding route&#58; Onramp.money INR → USDC on Polygon/BSC → Relay bridge → Arbitrum → deposit. Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable&#58; $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction&#58; "u"}` to upgrade (one-shot, idempotent). Triggers&#58; "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit/withdraw to Hyperliquid/Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, account/spot, portfolio, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Prerequisite&#58; openfin-setup.
 ---
 
 # Hyperliquid Perps & Spot
@@ -22,6 +22,18 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 >
 > Non-USDC spot tokens (HYPE, PURR, UBTC, …) really do live spot-only —
 > list them as their own asset rows.
+
+> **Chain model.** Hyperliquid is its **own L1**. Arbitrum is just where
+> the bridge lives. Don't say "USDC on Hyperliquid (Arbitrum)" or
+> "Hyperliquid on Arbitrum" — they're different surfaces.
+>
+> - **Fund**: USDC on Arbitrum → `GET /agent/trading/deposit-address` →
+>   L1 validators credit the HL account.
+> - **Exit**: `POST /withdraw` burns HL USDC; validators co-sign a payout
+>   to the same EOA on Arbitrum (~5 min, $1 fee).
+> - **Token**: Hyperliquid accepts **only USDC**. Not USDT. Not USDC.e.
+> - **INR funding path**: Onramp.money INR → USDC on Polygon/BSC →
+>   Relay bridge → Arbitrum → deposit address.
 
 ## Safety contract
 
@@ -124,6 +136,12 @@ unified — no action), `"default"`, `"disabled"` (need upgrade).
   `marginTableId`, `isDelisted`. HIP-3 DEXs add tokenized equity perps
   (`xyz:NVDA`, `xyz:TSLA`, …). Use to compute the numeric `a` index
   + pull `szDecimals` before placing orders.
+- **`GET /market/perp-categories`** — HIP-3 discovery. Returns
+  `[[symbol, category], …]` where category ∈ `crypto`, `stocks`,
+  `commodities`, `indices`, `fx`, `preipo`. Use for "list stock perps",
+  "what FX HIP-3 perps exist", "show commodities", "preipo perps". To
+  place an order, look the symbol up in `/market/perp-metas` for its
+  asset index + `szDecimals`.
 - **`GET /market/spot-metas`** (`?dex=`) — Spot universe (token pairs)
   + per-pair contexts.
 - **`GET /market/l2-book/:coin`** — L2 orderbook (bids + asks at
@@ -266,6 +284,45 @@ Same body as main DEX — same `a/b/p/s/r/t` fields. Only difference:
 internally; do not send a `builder` field. `FrontendMarket` is the
 typical TIF for stock perps.
 
+### HIP-4 outcomes (Yes/No binary outcomes on questions)
+
+Hyperliquid's prediction-market-style surface. Each **outcome** has two
+sides — `0` = No, `1` = Yes. Outcomes are grouped under a **question**
+(with a fallback outcome plus named outcomes).
+
+**Asset-ID encoding** — outcome tokens trade through the regular spot
+`place_order` / `modify_order` / `cancel_order` path. Encoding:
+
+```
+encoding   = 10 * outcome + side        # side ∈ {0, 1}
+spot coin  = "#<encoding>"               # e.g. "#11" for outcome 1, Yes
+token name = "+<encoding>"
+asset id a = 100_000_000 + encoding      # 100000011 for outcome 1, Yes
+```
+
+**Discovery + write actions:**
+
+- **`GET /market/outcome-meta`** (public) — Returns
+  `{ outcomes: [{outcome, name, description, sideSpecs}],
+   questions: [{question, name, description, fallbackOutcome,
+   namedOutcomes, settledNamedOutcomes}] }`.
+- **`POST /outcome/split`** body `{outcome, amount}` — Burn `amount`
+  quote tokens → mint `amount` Yes + `amount` No shares. `amount` is a
+  decimal string (`"123.0"`).
+- **`POST /outcome/merge`** body `{outcome, amount?}` — Burn `amount`
+  Yes + `amount` No → mint `amount` quote. `amount: null` = max
+  (full pair-matched balance).
+- **`POST /outcome/merge-question`** body `{question, amount?}` — Burn
+  `amount` Yes shares from every named outcome of the question → mint
+  `amount` quote. `null` = max.
+- **`POST /outcome/negate`** body `{question, outcome, amount}` — Burn
+  `amount` No shares of one outcome → mint `amount` Yes shares of every
+  *other* outcome of the same question.
+
+To trade an outcome token directly, derive `a` via the encoding above
+and use the regular `place_order` / `cancel_order` / `modify_order`
+flow with `s` as a decimal-string size.
+
 ### Read
 
 - **`GET /agent/trading/orders`** — Open orders (compact). `coin`, `side`
@@ -342,13 +399,14 @@ typical TIF for stock perps.
 ## MCP
 
 Hyperliquid is a single dispatch tool: `hyperliquid` with an `action`
-enum (`get_all_mids`, `get_market_metas`, `get_l2_book`,
-`get_token_details`, `get_candle_snapshot`, `get_deposit_address`,
-`get_account_summary` (+ `view: "perp"|"spot"|"all"`), `get_rate_limit`,
-`get_open_orders` (+ `verbose`), `get_historical_orders`,
-`get_order_status`, `place_order`, `cancel_order`, `modify_order`,
-`place_twap_order`, `get_twap_fills`, `terminate_twap_order`,
-`get_user_fills`, `get_user_funding_history`, `update_leverage`,
-`update_isolated_margin`, `withdraw_to_arbitrum`, `get_user_abstraction`,
-`set_user_abstraction`, `set_all_dexs_asset_ctxs_subscription`,
-`get_all_dexs_asset_ctxs`, `get_ws_status`).
+enum — `get_all_mids`, `get_market_metas`, `get_perp_categories`,
+`get_l2_book`, `get_token_details`, `get_candle_snapshot`,
+`get_deposit_address`, `get_account_summary`, `get_rate_limit`,
+`get_open_orders`, `get_historical_orders`, `get_order_status`,
+`place_order`, `cancel_order`, `modify_order`, `place_twap_order`,
+`get_twap_fills`, `terminate_twap_order`, `get_user_fills`,
+`get_user_funding_history`, `update_leverage`, `update_isolated_margin`,
+`withdraw_to_arbitrum`, `get_user_abstraction`, `set_user_abstraction`,
+`set_all_dexs_asset_ctxs_subscription`, `get_all_dexs_asset_ctxs`,
+`get_ws_status`, plus HIP-4: `get_outcome_meta`, `split_outcome`,
+`merge_outcome`, `merge_question`, `negate_outcome`.

@@ -158,7 +158,7 @@ no slippage knob (Polymarket handles it).
 
 | Field | Type | Notes |
 |---|---|---|
-| `destChainId` | number \| `"solana"` | **Required.** EVM chain ID or `"solana"`. |
+| `destChainId` | number \| string \| `"solana"` | **Required.** Chain ID — either `8453` or `"8453"` (backend normalizes). Use `"solana"` for Solana. |
 | `destToken` | string | **Required.** Token contract on the destination chain. |
 | `amount` | string | pUSD wei (6 decimals). Default = full deposit-wallet balance. |
 | `destRecipient` | string | Default = caller's EOA. External addresses trigger the EXTERNAL TRANSFER warning. |

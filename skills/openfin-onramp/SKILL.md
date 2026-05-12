@@ -41,27 +41,21 @@ forwards only the relevant ones.
 
 Response: `{ provider: "moonpay" | "onrampmoney", url: "https://…" }`.
 
-### `POST /agent/onramp/moonpay` — force Moonpay
+Common Moonpay `currencyCode` derivations (when the smart router picks
+Moonpay from `chain` + `currency`): `eth`/`usdc` on Ethereum →
+`eth`/`usdc`; `usdc` on Polygon/Base/Arbitrum/Optimism → `usdc_polygon`
+/ `usdc_base` / `usdc_arbitrum` / `usdc_optimism`; Solana `sol` →
+`sol`, Solana `usdc` → `usdc_sol`. If unsure, the smart router accepts
+`currencyCode` directly and forwards it.
 
-| Field | Notes |
-|---|---|
-| `chain` | `ethereum` / `polygon` / `base` / `arbitrum` / `optimism` / `bsc` / `solana`. |
-| `currency` | Combined with `chain` to derive `currencyCode`. |
-| `currencyCode` | Direct Moonpay code (e.g. `usdc_polygon`); overrides `chain` + `currency`. |
-| `amount` | Fiat amount. |
-| `baseCurrency` | ISO-4217, lowercased. Default `usd`. |
-| `walletAddress` | Defaults to caller's EVM/Solana address. |
-| `redirectURL`, `externalCustomerId`, `theme`, `colorCode` | Optional pass-through. |
+The Moonpay-only / Onramp.money-only REST routes
+(`POST /agent/onramp/moonpay`, `POST /agent/onramp/onrampmoney`) still
+exist for dashboards and direct API consumers, but they are **not
+exposed as MCP actions** — agents should always use the smart router so
+`baseCurrency: "inr"` lands on Onramp.money correctly. Force-provider
+fields below are documented for completeness (REST callers only).
 
-Email is auto-pulled from the authenticated user record.
-
-Common Moonpay `currencyCode` derivations (when passing `chain` +
-`currency`): `eth`/`usdc` on Ethereum → `eth`/`usdc`; `usdc` on
-Polygon/Base/Arbitrum/Optimism → `usdc_polygon` / `usdc_base` /
-`usdc_arbitrum` / `usdc_optimism`; Solana `sol` → `sol`, Solana `usdc`
-→ `usdc_sol`. If unsure, pass `currencyCode` directly.
-
-### `POST /agent/onramp/onrampmoney` — force Onramp.money (INR-only)
+### `POST /agent/onramp/onrampmoney` — REST-only (dashboards)
 
 | Field | Notes |
 |---|---|
@@ -109,6 +103,9 @@ Missing wallet → request fails; send the user to openfinance.tech.
 - Onramp lands on chain X, user wants to trade on chain Y → bridge via
   `openfin-relay`.
 - USDC on Arbitrum → Hyperliquid → use `GET /agent/trading/deposit-address`.
+  Hyperliquid takes **only USDC** (not USDT, not USDC.e).
+- **INR → Hyperliquid**: Onramp.money INR → USDC on Polygon or BSC →
+  `openfin-relay` to Arbitrum → Hyperliquid deposit address.
 - USDC on Polygon → Polymarket → swap to pUSD and route to the
   deposit wallet (`GET /agent/polymarket/deposit-wallet`).
 
@@ -141,6 +138,10 @@ POST /agent/onramp
 
 ## MCP
 
-- `get_onramp_url` (smart router — primary) — same body as
-  `POST /agent/onramp`. Returns `{ provider, url, … }`.
-- `get_moonpay_onramp_url` — force Moonpay only.
+Single tool: `get_onramp_url` (smart router). Same body as
+`POST /agent/onramp`; returns `{ provider, url, … }`. The
+force-provider routes are REST-only — there is no
+`get_moonpay_onramp_url` or `get_onrampmoney_onramp_url` MCP action,
+so every onramp call goes through the smart router. INR triggers
+("buy USDT with INR", "deposit ₹1000", "get USDC with UPI") route
+to Onramp.money automatically.
