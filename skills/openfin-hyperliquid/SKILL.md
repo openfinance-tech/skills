@@ -9,8 +9,10 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 > Hyperliquid USDC is **one balance**. Compute and present:
 >
 > ```
-> totalUSDC      = account.withdrawable + spot.USDC.total
-> lockedInOrders = spot.USDC.hold ?? 0
+> snapshot       = GET /agent/trading/account   # returns the unified envelope
+> totalUSDC      = snapshot.clearinghouseState.withdrawable
+>                + (snapshot.spotClearinghouseState.balances.find(b => b.coin === 'USDC')?.total ?? 0)
+> lockedInOrders = snapshot.spotClearinghouseState.balances.find(b => b.coin === 'USDC')?.hold ?? 0
 > ```
 >
 > ✅ "Your Hyperliquid balance: **$16.76 USDC** ($13.38 free, $3.39
@@ -22,11 +24,6 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 >
 > Non-USDC spot tokens (HYPE, PURR, UBTC, …) really do live spot-only —
 > list them as their own asset rows.
->
-> **HIP-4 outcomes.** Talk in human terms — "Yes / No on outcome N at
-> price P". Never mention asset-ID encodings, `#11`, `+11`, or
-> `100000011` to the user. ✅ "buy 100 Yes on outcome 30 at $0.42";
-> ❌ "place order on asset 100000301".
 
 > **Chain model.** Hyperliquid is its **own L1**. Arbitrum is just where
 > the bridge lives. Don't say "USDC on Hyperliquid (Arbitrum)" or
@@ -36,7 +33,11 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 >   L1 validators credit the HL account.
 > - **Exit**: `POST /withdraw` burns HL USDC; validators co-sign a payout
 >   to the same EOA on Arbitrum (~5 min, $1 fee).
-> - **Token**: Hyperliquid accepts **only USDC**. Not USDT. Not USDC.e.
+> - **Deposit token**: only USDC on Arbitrum (not USDT, not USDC.e).
+>   That USDC funds the native dex + spot. **HIP-3 dexes** carry their
+>   own collateral per dex (often USDC, sometimes USDH); **HIP-4
+>   outcomes** settle in USDH. Get USDH by swapping USDC → USDH on
+>   Hyperliquid spot.
 > - **INR funding path**: Onramp.money INR → USDC on Polygon/BSC →
 >   Relay bridge → Arbitrum → deposit address.
 
@@ -79,51 +80,83 @@ Reads (account, market, WS) are safe. Writes — `POST /orders`,
 
 ## Auto-unify rule (MUST do before pre-flight)
 
-Run on the first balance read of a session:
+Run on the first balance read of a session. One call gets everything:
 
 ```
-account = GET /agent/trading/account
-spot    = GET /agent/trading/account/spot
-spotUSDC = spot.balances.find(b => b.coin === 'USDC')?.total ?? 0
+snapshot  = GET /agent/trading/account            # unified envelope (see Account & funding)
+perpUSDC  = snapshot.clearinghouseState.withdrawable
+spotUSDC  = snapshot.spotClearinghouseState.balances.find(b => b.coin === 'USDC')?.total ?? 0
+mode      = snapshot.userAbstraction              # no separate /abstraction call needed
 
-if account.withdrawable > 0:
-  mode = GET /agent/trading/abstraction
-  if mode in ("default", "disabled"):
-    POST /agent/trading/abstraction { abstraction: "u" }   # one-shot, idempotent
+if perpUSDC > 0 and mode in ("default", "disabled"):
+  POST /agent/trading/abstraction { abstraction: "u" }   # one-shot, idempotent
 
-unifiedFreeUSDC = account.withdrawable + spotUSDC
+unifiedFreeUSDC = perpUSDC + spotUSDC
 ```
 
 Three cases this covers:
 
-1. **`withdrawable > 0`** → check abstraction; upgrade if `"default"` /
-   `"disabled"`. After upgrade, spot USDC is fungible perp margin.
-2. **`withdrawable === 0`, `spotUSDC > 0`** → wallet is already unified
-   (USDC only ends up on spot after unification). Skip the abstraction
-   call; `spotUSDC` IS the withdrawable balance.
+1. **`perpUSDC > 0`** → if `mode` isn't yet unified, upgrade. After
+   upgrade, spot USDC is fungible perp margin.
+2. **`perpUSDC === 0`, `spotUSDC > 0`** → already unified (USDC only
+   ends up on spot after unification). `spotUSDC` IS the withdrawable
+   balance.
 3. **Both zero** → tell the user to deposit / bridge in (no
    abstraction call needed).
 
-`GET /abstraction` returns one of:
-`"unifiedAccount"`, `"portfolioMargin"`, `"dexAbstraction"` (all
-unified — no action), `"default"`, `"disabled"` (need upgrade).
-`POST /abstraction` only accepts `"u"`; `"i"` and `"p"` return 400.
+`userAbstraction` field returns one of: `"unifiedAccount"`,
+`"portfolioMargin"`, `"dexAbstraction"` (all unified — no action),
+`"default"`, `"disabled"` (need upgrade). `POST /abstraction` only
+accepts `"u"`; `"i"` and `"p"` return 400.
+
+> **Native USDC vs HIP-3 / HIP-4 collateral.** `unifiedFreeUSDC` covers
+> the native dex + spot. HIP-3 dexes have their **own** `withdrawable`
+> per dex in their own collateral token (often USDC, sometimes USDH),
+> and HIP-4 outcomes settle in **USDH**. If the user trades HIP-3 or
+> HIP-4, the `insufficientCollateral` field on order rejections names
+> the right asset — see [Place](#place).
 
 ## Account & funding endpoints
 
-- **`GET /agent/trading/account`** — Hyperliquid `clearinghouseState`.
-  Top-level **`withdrawable`** (USDC string), `marginSummary`
-  (`accountValue`, `totalMarginUsed`, `totalNtlPos`, `totalRawUsd`),
-  `crossMarginSummary`, `crossMaintenanceMarginUsed`, and
-  `assetPositions` (`entryPx`, `positionValue`, `returnOnEquity`,
-  `unrealizedPnl`, `liquidationPx`, `leverage`, `size`). The USDC
-  field is `account.withdrawable` — top level, NOT in `marginSummary`.
-- **`GET /agent/trading/account/spot`** — All spot tokens including
-  USDC. USDC entry has `total` and `hold`.
-- **`GET /agent/trading/portfolio`** — Combined perp + spot view.
+- **`GET /agent/trading/account`** *and* **`GET /agent/trading/account/spot`**
+  — Both return the **same unified portfolio envelope** (via Uniblock's
+  Hydromancer `portfolioState`, `dex=ALL_DEXES`). One call covers
+  everything; don't loop per-dex. Shape:
+
+  ```json
+  {
+    "clearinghouseState": {                 // perp side, across native + every HIP-3 dex
+      "withdrawable": "...",                 // USDC available for native-dex perps + spot
+      "marginSummary": { "accountValue", "totalMarginUsed", "totalNtlPos", "totalRawUsd" },
+      "crossMarginSummary": { ... },
+      "crossMaintenanceMarginUsed": "...",
+      "assetPositions": [
+        { "entryPx", "positionValue", "returnOnEquity", "unrealizedPnl",
+          "liquidationPx", "leverage", "size", "coin", "dex" }
+        // includes positions on native dex AND on HIP-3 dexes (xyz, flx, vntl, hyna, km, abcd, cash, para, …)
+      ]
+    },
+    "spotClearinghouseState": {
+      "balances": [{ "coin", "total", "hold", "entryNtl" }]   // USDC + all other spot tokens
+    },
+    "userAbstraction": "unifiedAccount" | "portfolioMargin" | "dexAbstraction" | "default" | "disabled"
+  }
+  ```
+
+  `withdrawable` is at `clearinghouseState.withdrawable` (NOT nested in
+  `marginSummary`). Pass `dex=<name>` only to scope to a single dex —
+  the default `ALL_DEXES` already covers everything.
+
+- **`GET /agent/trading/portfolio`** — Time-series equity-curve view
+  (different shape: portfolio over time windows). Use for charts /
+  historical PnL, not for current snapshot.
 - **`GET /agent/trading/rate-limit`** — API rate-limit status.
 - **`GET /agent/trading/deposit-address`** — Address to send USDC to
-  fund Hyperliquid (chain routing automatic).
+  fund Hyperliquid. The address lives **on Arbitrum** — send USDC on
+  Arbitrum (not USDT, not Polygon, not Ethereum). HIP-3 dexes that use
+  non-USDC collateral and all HIP-4 outcomes settle in tokens like
+  USDH that aren't deposit-fundable here — get them via Hyperliquid
+  spot swap (USDC → USDH).
 - **`POST /agent/trading/withdraw`** body `{amount}` — Withdraw USDC to
   the same wallet's Arbitrum address. Flat $1 fee, ~5 min finalize.
   Destination is hardcoded to the signer; no third-party transfers.
@@ -271,6 +304,19 @@ Per-order fields:
 Top-level `grouping`: `"na"` (default) | `"normalTpsl"` (group TP/SL with
 a primary order) | `"positionTpsl"` (attach TP/SL to existing position).
 
+> **`insufficientCollateral` on rejections.** When an order fails with
+> "insufficient", the response carries
+> `insufficientCollateral: [{ requiredAsset, dex, context, message }]`.
+> The asset is **NOT always USDC**:
+>
+> - Native perps → `USDC`
+> - HIP-3 perps → the dex's `collateralToken` (often USDC, sometimes USDH)
+> - HIP-4 outcomes → **`USDH`**
+>
+> Relay `requiredAsset` + `message` to the user verbatim. Don't say
+> "deposit USDC" when the backend asks for USDH — the user gets USDH
+> by swapping USDC → USDH on Hyperliquid spot, not by depositing.
+
 ### Asset index formula (HIP-3 included)
 
 - Main-DEX perps: `a = index_in_meta` (BTC=0, ETH=1, …).
@@ -295,22 +341,22 @@ Hyperliquid's prediction-market-style surface. Each **outcome** has two
 sides — `0` = No, `1` = Yes. Outcomes are grouped under a **question**
 (with a fallback outcome plus named outcomes).
 
-**Asset-ID encoding — INTERNAL only. Never explain to the user.**
-The user thinks in "Yes / No on outcome N at price P", not in asset
-IDs or `#11` / `+11` notation. Compute the asset ID silently when
-constructing an order, summarize the trade in human terms (e.g. "buy
-100 Yes on outcome 30 at $0.42"), and skip the formula entirely in
-any explanation, summary, or follow-up question.
+**Collateral: USDH (not USDC).** `split` / `merge` / `negate` burn or
+mint USDH, and `place_order` on outcome share tokens debits / credits
+USDH too. A user with only USDC must first swap USDC → USDH on
+Hyperliquid spot before any HIP-4 action will succeed. On
+"insufficient" errors the response carries
+`insufficientCollateral: { requiredAsset: "USDH", … }`.
+
+**Asset-ID encoding** — outcome tokens trade through the regular spot
+`place_order` / `modify_order` / `cancel_order` path. Encoding:
 
 ```
 encoding   = 10 * outcome + side        # side ∈ {0, 1}
-asset id a = 100_000_000 + encoding     # use as `a` in place_order /
-                                        # modify_order / cancel_order
+spot coin  = "#<encoding>"               # e.g. "#11" for outcome 1, Yes
+token name = "+<encoding>"
+asset id a = 100_000_000 + encoding      # 100000011 for outcome 1, Yes
 ```
-
-Spot-coin / token-name forms (`#<encoding>`, `+<encoding>`) are
-reference representations from Hyperliquid's docs — also do not
-surface to users.
 
 **Discovery + write actions:**
 
@@ -331,9 +377,9 @@ surface to users.
   `amount` No shares of one outcome → mint `amount` Yes shares of every
   *other* outcome of the same question.
 
-To trade an outcome token directly, derive `a` silently via the
-encoding above and call the regular `place_order` / `cancel_order` /
-`modify_order` flow with `s` as a decimal-string size.
+To trade an outcome token directly, derive `a` via the encoding above
+and use the regular `place_order` / `cancel_order` / `modify_order`
+flow with `s` as a decimal-string size.
 
 ### Read
 
