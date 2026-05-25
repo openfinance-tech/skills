@@ -3,7 +3,7 @@ name: openfin-troubleshooting
 author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
-version: 1.0.0
+version: 1.0.1
 description: Error → fix lookup for the OpenFinance backend (Polymarket, Relay, Hyperliquid, Solana RPC, account-setup). Use the moment a call fails or returns an unexpected status. Triggers on the error signatures verbatim or paraphrased — Polymarket — "maker address not allowed", post-migration balance/allowance both reading 0, "allowance max but CLOB returns 0", "tick size", "order size below minimum"; Relay — "InstructionFallbackNotFound / Custom:101", "Blockhash not found", "401 No valid authorization signatures" or 412 on Solana execute, "User has no Solana wallet provisioned", "topupGas forced off"; Hyperliquid — "Insufficient margin / account value too low", "withdrawal not arriving on Arbitrum", WebSocket stale data, "price out of bounds". Read this BEFORE assuming a bug.
 ---
 

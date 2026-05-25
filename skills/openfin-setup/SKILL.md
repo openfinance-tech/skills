@@ -3,7 +3,7 @@ name: openfin-setup
 author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
-version: 1.0.0
+version: 1.0.1
 description: Auth check for the OpenFinance backend — confirms an API key is available before any other OpenFinance skill runs. Use FIRST whenever the user is about to call any /agent/* route (Polymarket, Hyperliquid, Relay), is hitting 401/412, or hasn't traded yet in this session. Triggers on "how do I get started", "API key is required", "Invalid API key", "401/412 from /agent/*", "set up OpenFinance", or any first call into a trading skill. Resolves the key from `OPENFINANCE_API_KEY` (or equivalent env / user-supplied value), confirms the format (`open_…`), verifies via GET /agent/wallets, and otherwise points the user to https://openfinance.tech to issue one.
 ---
 

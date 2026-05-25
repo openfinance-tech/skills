@@ -3,7 +3,7 @@ name: openfin-polymarket
 author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
-version: 1.0.0
+version: 1.0.1
 description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, builder/*). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
 ---
 

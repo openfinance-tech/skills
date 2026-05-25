@@ -3,7 +3,7 @@ name: openfin-onramp
 author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
-version: 1.0.0
+version: 1.0.1
 description: Fiat → crypto onramp through OpenFinance. Smart-routed across **Moonpay** (cards / Apple Pay / Google Pay / SEPA / bank — global, non-INR) and **Onramp.money** (UPI / IMPS — INR only). Default to POST /agent/onramp (smart router; `baseCurrency:"inr"` → Onramp.money, anything else → Moonpay). Use POST /agent/onramp/moonpay or /onrampmoney to force a provider. Triggers — "buy USDC with my card", "Apple Pay", "deposit fiat", "fund my wallet", "I have no crypto, how do I start", "buy ETH on Base with USD"; INR triggers — "buy USDC with INR", "deposit ₹1000", "top up with UPI / IMPS", "India onramp". The agent never signs an on-chain tx — user opens the returned URL to complete KYC + payment in the provider's UI; funds land in the user's OpenFinance-managed wallet for the chosen chain. Onramp.money has a **fixed (coin × network) matrix** (usdt:bep20|matic20|erc20|trc20, usdc:bep20|matic20 ONLY, busd:bep20, matic:matic20, bnb:bep20, eth:erc20|matic20, sol:spl); calls outside it throw — propose a supported pair instead. Pair with openfin-relay (bridge after onramp) and openfin-setup (API key).
 ---
 
