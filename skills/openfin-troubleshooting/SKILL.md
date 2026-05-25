@@ -1,9 +1,15 @@
 ---
 name: openfin-troubleshooting
-description: Error → fix lookup for the OpenFinance backend (Polymarket, Relay, Hyperliquid, Solana RPC, account-setup). Use the moment a call fails or returns an unexpected status. Triggers on the error signatures verbatim or paraphrased — Polymarket&#58; "maker address not allowed", "balance&#58; 0 / allowance&#58; 0" after deposit-wallet migration, "allowance max but CLOB returns 0", "tick size", "order size below minimum"; Relay&#58; "InstructionFallbackNotFound / Custom:101", "Blockhash not found", "401 No valid authorization signatures" or 412 on Solana execute, "User has no Solana wallet provisioned", "topupGas forced off"; Hyperliquid&#58; "Insufficient margin / account value too low", "withdrawal not arriving on Arbitrum", WebSocket stale data, "price out of bounds". Read this BEFORE assuming a bug.
+author: OpenFinance
+homepage: https://openfinance.tech
+license: Proprietary
+version: 1.0.0
+description: Error → fix lookup for the OpenFinance backend (Polymarket, Relay, Hyperliquid, Solana RPC, account-setup). Use the moment a call fails or returns an unexpected status. Triggers on the error signatures verbatim or paraphrased — Polymarket — "maker address not allowed", post-migration balance/allowance both reading 0, "allowance max but CLOB returns 0", "tick size", "order size below minimum"; Relay — "InstructionFallbackNotFound / Custom:101", "Blockhash not found", "401 No valid authorization signatures" or 412 on Solana execute, "User has no Solana wallet provisioned", "topupGas forced off"; Hyperliquid — "Insufficient margin / account value too low", "withdrawal not arriving on Arbitrum", WebSocket stale data, "price out of bounds". Read this BEFORE assuming a bug.
 ---
 
 # OpenFinance Troubleshooting
+
+> **Publisher.** Part of the OpenFinance skill bundle (openfin-setup, openfin-troubleshooting, openfin-hyperliquid, openfin-relay, openfin-onramp, openfin-polymarket, openfin-onchain) — all maintained by OpenFinance (https://openfinance.tech). Install as a set, not individually.
 
 Error → fix lookup. Most errors map to exactly one fix.
 
