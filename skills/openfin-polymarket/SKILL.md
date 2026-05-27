@@ -4,7 +4,7 @@ author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
 version: 1.0.1
-description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, builder/*). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
+description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address — except for "my data" reads where the `/me/*` aliases inject the caller's address automatically. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank", "my positions / my activity / my trades / my closed positions", "what is wallet X doing on Polymarket", "X's positions / activity / trades". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,closed-positions,activity,trades,portfolio,pnl}, me/{positions,closed-positions,activity,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, builder/*). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
 ---
 
 # Polymarket
@@ -97,12 +97,45 @@ tokens with `token_id`), `min_tick_size`, `neg_risk`.
 ### User data — by deposit-wallet address
 
 `:address` is the **deposit wallet**, not the EOA. Resolve via
-`GET /agent/polymarket/deposit-wallet` → `depositWallet`.
+`GET /agent/polymarket/deposit-wallet` → `depositWallet`. All six work
+for any address — use them for watchlists / leaderboard click-throughs
+/ copy-trading dashboards, not just the caller.
 
-- **`GET /user/:address/positions`** — active positions, entry/current values, PnL.
-- **`GET /user/:address/trades`** (`?limit&offset`) — trade history.
+- **`GET /user/:address/positions`** — active positions. Filters:
+  `sizeThreshold`, `redeemable`, `mergeable`, `sortBy`
+  (`CURRENT` / `INITIAL` / `TOKENS` / `CASHPNL` / `PERCENTPNL` /
+  `TITLE` / `RESOLVING` / `PRICE` / `AVGPRICE`), `sortDirection`,
+  `market`, `eventId`, `title`, `limit`, `offset`.
+- **`GET /user/:address/closed-positions`** — realized positions.
+  Adds `REALIZEDPNL` to the `sortBy` enum; same other filters.
+- **`GET /user/:address/activity`** — unified activity feed across
+  `TRADE` / `SPLIT` / `MERGE` / `REDEEM` / `REWARD` / `CONVERSION` /
+  `MAKER_REBATE` / `REFERRAL_REWARD`. Filters: `type` (one or more),
+  `side` (`BUY` / `SELL`), time-range, market/eventId, limit/offset.
+- **`GET /user/:address/trades`** — trade history. Filters:
+  `takerOnly`, `filterType` + `filterAmount`, `market`, `eventId`,
+  `side`, `limit`, `offset`.
 - **`GET /user/:address/portfolio`** — total value, positions, PnL, win rate.
 - **`GET /user/:address/pnl`** — realized + unrealized + total PnL.
+
+#### Caller-scoped shortcut (`/me/*`)
+
+For the caller's own data, skip the deposit-wallet resolution and call
+the `/me/*` alias instead — backend injects the caller's EVM EOA into
+`:address` for you. Same query parameters as the `/user/:address/*`
+counterparts.
+
+- `GET /agent/polymarket/me/positions`
+- `GET /agent/polymarket/me/closed-positions`
+- `GET /agent/polymarket/me/activity`
+- `GET /agent/polymarket/me/trades`
+- `GET /agent/polymarket/me/portfolio`
+- `GET /agent/polymarket/me/pnl`
+
+Use `/me/*` for "show MY positions / trades / activity" intents. Use
+`/user/:address/*` (with a resolved deposit-wallet address) for "show
+me wallet X's data" intents — leaderboard click-throughs, watchlists,
+copy-trading.
 
 ### Leaderboard
 
@@ -274,7 +307,11 @@ YES and NO are separate tokens; buying YES at `0.23` ≈ selling NO at `0.77`.
 
 Single dispatch tool: `polymarket` with an `action` enum
 (`get_events`, `get_markets`, `search`, `get_orderbooks`, `get_prices`,
-`get_user_positions`, `get_user_pnl`, `get_market_stats`, `get_leaderboard`,
-`get_deposit_wallet`, `withdraw_and_bridge`, `place_order`,
-`place_market_order`, `place_orders`, `cancel`, …). Pass only the
-params each action documents.
+`get_user_positions`, `get_user_closed_positions`, `get_user_activity`,
+`get_user_trades`, `get_user_portfolio`, `get_user_pnl`,
+`get_market_stats`, `get_leaderboard`, `get_deposit_wallet`,
+`withdraw_and_bridge`, `place_order`, `place_market_order`,
+`place_orders`, `cancel`, …). Pass only the params each action
+documents. For "my data" reads the `/me/*` REST aliases save a
+deposit-wallet lookup — fetched via the same dispatch tool with the
+caller's address resolved server-side.

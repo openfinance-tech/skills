@@ -99,24 +99,24 @@ Three causes:
   perp margin).
 - The agent only read `account.withdrawable` and missed the spot slice.
 
-**Fix:** Run the auto-unify rule:
+**Fix:** Run the auto-unify rule (one call now — `/account/spot` was
+removed; the spot slice ships in the same envelope):
 
 ```
-account = GET /agent/trading/account
-spot    = GET /agent/trading/account/spot
-spotUSDC = spot.balances.find(b => b.coin === 'USDC')?.total ?? 0
+snap     = GET /agent/trading/account
+perpUSDC = snap.clearinghouseState.withdrawable
+spotUSDC = snap.spotClearinghouseState.balances.find(b => b.coin === 'USDC')?.total ?? 0
+mode     = snap.userAbstraction
 
-if account.withdrawable > 0:
-  mode = GET /agent/trading/abstraction
-  if mode in ("default", "disabled"):
-    POST /agent/trading/abstraction { abstraction: "u" }   # one-shot
+if perpUSDC > 0 and mode in ("default", "disabled"):
+  POST /agent/trading/abstraction { abstraction: "u" }   # one-shot
 
-unifiedFreeUSDC = account.withdrawable + spotUSDC
+unifiedFreeUSDC = perpUSDC + spotUSDC
 ```
 
-Skip the abstraction call when `withdrawable === 0` and `spotUSDC > 0`
-— the wallet is already unified. If `unifiedFreeUSDC >= required`,
-just place the order. If short, walk the funding ladder in
+Skip the abstraction call when `perpUSDC === 0` and `spotUSDC > 0` —
+the wallet is already unified. If `unifiedFreeUSDC >= required`, just
+place the order. If short, walk the funding ladder in
 `openfin-hyperliquid` (bridge → onramp).
 
 **Counter-examples seen:**

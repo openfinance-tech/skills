@@ -4,7 +4,7 @@ author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
 version: 1.0.1
-description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, not a chain variant of Arbitrum — Arbitrum is just where the deposit address lives. Fund path — USDC on Arbitrum → `GET /agent/trading/deposit-address` → L1 validators credit the HL account. Exit path — withdraw_to_arbitrum burns HL USDC, validators co-sign payout to the same EOA on Arbitrum (~5 min, $1 fee). Hyperliquid accepts **only USDC** (not USDT, not USDC.e). INR funding route — Onramp.money INR → USDC on Polygon/BSC → Relay bridge → Arbitrum → deposit. Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction:"u"}` to upgrade (one-shot, idempotent). Triggers — "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit/withdraw to Hyperliquid/Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, account/spot, portfolio, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Prerequisite — openfin-setup.
+description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, not a chain variant of Arbitrum — Arbitrum is just where the deposit address lives. Fund path — USDC on Arbitrum → `GET /agent/trading/deposit-address` → L1 validators credit the HL account. Exit path — withdraw_to_arbitrum burns HL USDC, validators co-sign payout to the same EOA on Arbitrum (~5 min, $1 fee). Hyperliquid accepts **only USDC** (not USDT, not USDC.e). INR funding route — Onramp.money INR → USDC on Polygon/BSC → Relay bridge → Arbitrum → deposit. Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction:"u"}` to upgrade (one-shot, idempotent). Triggers — "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit/withdraw to Hyperliquid/Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, portfolio, batch-portfolio-states, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Every user-scoped read accepts an optional `?address=0x…` query — falls back to caller; `/deposit-address` is deliberately caller-only.. Prerequisite — openfin-setup.
 ---
 
 # Hyperliquid Perps & Spot
@@ -124,10 +124,20 @@ accepts `"u"`; `"i"` and `"p"` return 400.
 
 ## Account & funding endpoints
 
-- **`GET /agent/trading/account`** *and* **`GET /agent/trading/account/spot`**
-  — Both return the **same unified portfolio envelope** (via Uniblock's
-  Hydromancer `portfolioState`, `dex=ALL_DEXES`). One call covers
-  everything; don't loop per-dex. Shape:
+> **`?address=0x…` convention.** Every user-scoped read below
+> (`/account`, `/portfolio`, `/rate-limit`, `/orders`, `/orders/details`,
+> `/orders/history`, `/orders/:oid/status`, `/twap/fills`, `/fills`,
+> `/fills/by-time`, `/funding`, `GET /abstraction`) accepts an optional
+> `?address=0x…` query. Set it to read another wallet's public info
+> (watchlists, copy-trading, "what is wallet X doing"); omit to fall
+> back to the caller. **`/deposit-address` is deliberately caller-only**
+> — it ignores `?address=` and always returns the caller's address.
+
+- **`GET /agent/trading/account`** (`?address=`) — Unified portfolio
+  envelope (via Uniblock's Hydromancer `portfolioState`,
+  `dex=ALL_DEXES`). One call covers perp positions across native + every
+  HIP-3 dex, spot balances, and the user's abstraction mode. Don't loop
+  per-dex. Shape:
 
   ```json
   {
@@ -153,10 +163,18 @@ accepts `"u"`; `"i"` and `"p"` return 400.
   `marginSummary`). Pass `dex=<name>` only to scope to a single dex —
   the default `ALL_DEXES` already covers everything.
 
-- **`GET /agent/trading/portfolio`** — Time-series equity-curve view
-  (different shape: portfolio over time windows). Use for charts /
-  historical PnL, not for current snapshot.
-- **`GET /agent/trading/rate-limit`** — API rate-limit status.
+  > **Note**: `GET /agent/trading/account/spot` is removed. The spot
+  > slice is in `spotClearinghouseState` of the same `/account`
+  > response.
+
+- **`POST /agent/trading/batch-portfolio-states`** body
+  `{addresses: ["0x…", "0x…", …]}` — Bulk variant of `/account` for many
+  wallets in one call. Returns the same per-address envelope keyed by
+  address. Use for leaderboard click-throughs and watchlists.
+- **`GET /agent/trading/portfolio`** (`?address=`) — Time-series equity
+  curve (different shape from `/account`: portfolio over time windows).
+  Use for charts / historical PnL, not for current snapshot.
+- **`GET /agent/trading/rate-limit`** (`?address=`) — API rate-limit status.
 - **`GET /agent/trading/deposit-address`** — Address to send USDC to
   fund Hyperliquid. The address lives **on Arbitrum** — send USDC on
   Arbitrum (not USDT, not Polygon, not Ethereum). HIP-3 dexes that use
@@ -389,6 +407,8 @@ flow with `s` as a decimal-string size.
 
 ### Read
 
+All four below accept `?address=0x…` to read another wallet's data.
+
 - **`GET /agent/trading/orders`** — Open orders (compact). `coin`, `side`
   (B/A), `limitPx`, `sz`, `oid`, `timestamp`, `orderType`.
 - **`GET /agent/trading/orders/details`** — Full details: adds `origSz`,
@@ -465,12 +485,18 @@ flow with `s` as a decimal-string size.
 Hyperliquid is a single dispatch tool: `hyperliquid` with an `action`
 enum — `get_all_mids`, `get_market_metas`, `get_perp_categories`,
 `get_l2_book`, `get_token_details`, `get_candle_snapshot`,
-`get_deposit_address`, `get_account_summary`, `get_rate_limit`,
-`get_open_orders`, `get_historical_orders`, `get_order_status`,
-`place_order`, `cancel_order`, `modify_order`, `place_twap_order`,
-`get_twap_fills`, `terminate_twap_order`, `get_user_fills`,
-`get_user_funding_history`, `update_leverage`, `update_isolated_margin`,
-`withdraw_to_arbitrum`, `get_user_abstraction`, `set_user_abstraction`,
+`get_deposit_address`, `get_account_summary`,
+`get_batch_portfolio_states`, `get_rate_limit`, `get_open_orders`,
+`get_historical_orders`, `get_order_status`, `place_order`,
+`cancel_order`, `modify_order`, `place_twap_order`, `get_twap_fills`,
+`terminate_twap_order`, `get_user_fills`, `get_user_funding_history`,
+`update_leverage`, `update_isolated_margin`, `withdraw_to_arbitrum`,
+`get_user_abstraction`, `set_user_abstraction`,
 `set_all_dexs_asset_ctxs_subscription`, `get_all_dexs_asset_ctxs`,
 `get_ws_status`, plus HIP-4: `get_outcome_meta`, `split_outcome`,
 `merge_outcome`, `merge_question`, `negate_outcome`.
+
+Every user-scoped read action above accepts an optional `address`
+parameter (the MCP-layer equivalent of the REST `?address=` query) —
+falls back to the caller's wallet. `get_deposit_address` is
+deliberately caller-only.
