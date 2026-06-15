@@ -33,6 +33,7 @@ Requires the CLI from [vercel-labs/skills](https://github.com/vercel-labs/skills
 | [`openfin-hyperliquid`](./skills/openfin-hyperliquid) | Perp/spot trading, leverage, TWAP, WS market data, unifiedAccount auto-upgrade |
 | [`openfin-relay`](./skills/openfin-relay) | Cross-chain swaps, bridging, Solana routes, bridge+call |
 | [`openfin-onchain`](./skills/openfin-onchain) | Token metadata, wallet portfolios, balances, USD prices, same-chain transfers |
+| [`openfin-launchpad`](./skills/openfin-launchpad) | Solana token launchpad (Meteora DBC) — launch, trade on the curve, migrate to DAMM v2, claim creator fees |
 | [`openfin-onramp`](./skills/openfin-onramp) | Fiat → crypto via Moonpay (cards, global) or Onramp.money (UPI / IMPS, India) |
 
 ## Backend prerequisites
