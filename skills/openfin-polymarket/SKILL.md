@@ -4,7 +4,7 @@ author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
 version: 1.0.1
-description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address — except for "my data" reads where the `/me/*` aliases inject the caller's address automatically. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank", "my positions / my activity / my trades / my closed positions", "what is wallet X doing on Polymarket", "X's positions / activity / trades". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,closed-positions,activity,trades,portfolio,pnl}, me/{positions,closed-positions,activity,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, order, order/market, orders, order/:id, order/:id/scoring, builder/*). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
+description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address — except for "my data" reads where the `/me/*` aliases inject the caller's address automatically. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank", "my positions / my activity / my trades / my closed positions", "what is wallet X doing on Polymarket", "X's positions / activity / trades", "claim my winnings", "redeem my Polymarket bet", "I won, cash out", "redeem all". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,closed-positions,activity,trades,portfolio,pnl}, me/{positions,closed-positions,activity,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, redeem, redeem/all, order, order/market, orders, order/:id, order/:id/scoring, builder/*). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
 ---
 
 # Polymarket
@@ -23,7 +23,8 @@ description: Polymarket — research, pricing, trading, deposit/withdraw, and tr
 ## Safety contract
 
 Reads are safe. Anything that writes (`/order`, `/order/market`,
-`/orders`, cancels, `/deposit-wallet/withdraw-and-bridge`) requires:
+`/orders`, cancels, `/deposit-wallet/withdraw-and-bridge`, `/redeem`,
+`/redeem/all`) requires:
 
 1. **Show the user before submitting**: market title + outcome, side,
    size in shares **and** USDC notional (`price × size`), limit price +
@@ -46,7 +47,12 @@ Reads are safe. Anything that writes (`/order`, `/order/market`,
    > of your wallets. Funds cannot be recovered if the address is wrong.
    > Type 'yes' to confirm.**
 
-6. Surface any rejection (tick size, min notional, etc.) verbatim
+6. **Redeem all** — `/redeem/all` claims every redeemable position in
+   one batch. Preview the count via
+   `GET /me/positions?redeemable=true` and confirm with the user
+   before calling. Single-market `/redeem` only needs confirmation
+   that you've got the right `conditionId`.
+7. Surface any rejection (tick size, min notional, etc.) verbatim
    before retrying.
 
 ## Prerequisite (trading; reads are public)
@@ -217,6 +223,34 @@ No status / requestId — Polymarket handles delivery off-platform. If
 funds don't arrive, surface `transfer.txHash` + `bridgeAddress.evm` and
 direct the user to Polymarket support.
 
+### `POST /agent/polymarket/redeem` — claim winnings from one market
+
+After a market resolves, burns the caller's winning outcome tokens and
+pays the USDC payout into their deposit wallet (then cash out via
+`/deposit-wallet/withdraw-and-bridge`). Gas-free (Polymarket relayer).
+
+| Field | Notes |
+|---|---|
+| `conditionId` ✓ | Market condition id (0x… bytes32). |
+| `negRisk` | `true` for neg-risk (multi-outcome) markets — uses `NegRiskAdapter.redeemPositions`. Default `false` (standard market via `ConditionalTokens.redeemPositions`). |
+| `amounts` | Neg-risk only — per-outcome amounts (base units, 6dp). Optional. |
+
+Returns `{ conditionId, negRisk, txHash }`. Only works after the
+market has resolved.
+
+### `POST /agent/polymarket/redeem/all` — claim all winnings in one batch
+
+Auto-discovers every redeemable position for the caller (via the
+data-api filter), dedupes by market, and redeems them in one gas-free
+relayer tx. Payouts land in the deposit wallet as USDC.
+
+Body: `{}`. Returns `{ count, redeemed: [...], txHash }`.
+
+For "claim everything" intents this is one call instead of N. Confirm
+the count with the user first — show how many markets will be
+redeemed (you can preview via
+`GET /me/positions?redeemable=true` before calling).
+
 ---
 
 ## Trading endpoints
@@ -310,8 +344,8 @@ Single dispatch tool: `polymarket` with an `action` enum
 `get_user_positions`, `get_user_closed_positions`, `get_user_activity`,
 `get_user_trades`, `get_user_portfolio`, `get_user_pnl`,
 `get_market_stats`, `get_leaderboard`, `get_deposit_wallet`,
-`withdraw_and_bridge`, `place_order`, `place_market_order`,
-`place_orders`, `cancel`, …). Pass only the params each action
-documents. For "my data" reads the `/me/*` REST aliases save a
-deposit-wallet lookup — fetched via the same dispatch tool with the
-caller's address resolved server-side.
+`withdraw_and_bridge`, `redeem`, `redeem_all`, `place_order`,
+`place_market_order`, `place_orders`, `cancel`, …). Pass only the
+params each action documents. For "my data" reads the `/me/*` REST
+aliases save a deposit-wallet lookup — fetched via the same dispatch
+tool with the caller's address resolved server-side.

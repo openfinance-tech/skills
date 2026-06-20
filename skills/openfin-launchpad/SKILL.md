@@ -1,6 +1,6 @@
 ---
 name: openfin-launchpad
-description: 'OpenFinance Launchpad — Solana token launchpad on a Meteora dynamic bonding curve (DBC). Launch a new SPL token in one tx, trade it on the curve, and graduate to a DAMM v2 AMM once the curve fills. Use whenever the user wants to create a new Solana memecoin / project token or trade one of these DBC tokens. Triggers&#58; "launch a token", "create a memecoin", "start a token on Solana", "DBC launch", "bonding curve launch", "buy / sell {token} on the curve", "graduate the curve", "claim my creator fees", "what fees has my token made", "pool state / curve progress". Routing rule&#58; PRE-graduation trading (curve not full) → buy / sell here. POST-graduation (curve filled, DAMM v2 pool live) → openfin-onchain Jupiter (onchain_jupiter_order + onchain_jupiter_execute) — calling buy/sell on a graduated pool returns alreadyGraduated&#58; true. Solana-only — other chains use openfin-relay or openfin-onchain. Covers POST /agent/launchpad/launch, GET /agent/launchpad/pool/:poolAddress, GET /agent/launchpad/pool/:poolAddress/{buy,sell}-quote, POST /agent/launchpad/pool/:poolAddress/{buy,sell,migrate,claim-creator-fees}, GET /agent/launchpad/pool/:poolAddress/fees, GET /agent/launchpad/creator/fees. Each call requires `x-api-key&#58; open_…`. Prerequisite&#58; openfin-setup (and the user has a Solana wallet provisioned at openfinance.tech).'
+description: 'OpenFinance Launchpad — Solana token launchpad on a Meteora dynamic bonding curve (DBC). Launch a new SPL token in one tx, trade it on the curve, and graduate to a DAMM v2 AMM once the curve fills. Use whenever the user wants to create a new Solana memecoin / project token, browse tokens already launched on the platform, or trade one of these DBC tokens. Triggers&#58; "launch a token", "create a memecoin", "start a token on Solana", "DBC launch", "bonding curve launch", "buy / sell {token} on the curve", "graduate the curve", "claim my creator fees", "what fees has my token made", "pool state / curve progress", "show me tokens on the launchpad", "trending / newest tokens", "what tokens have I launched". Routing rule&#58; PRE-graduation trading (curve not full) → buy / sell here. POST-graduation (curve filled, DAMM v2 pool live) → openfin-onchain Jupiter (onchain_jupiter_order + onchain_jupiter_execute) — calling buy/sell on a graduated pool returns alreadyGraduated&#58; true. Solana-only — other chains use openfin-relay or openfin-onchain. Covers GET /agent/launchpad/tokens (public explore feed), POST /agent/launchpad/launch, GET /agent/launchpad/pool/:poolAddress, GET /agent/launchpad/pool/:poolAddress/{buy,sell}-quote, POST /agent/launchpad/pool/:poolAddress/{buy,sell,migrate,claim-creator-fees}, GET /agent/launchpad/pool/:poolAddress/fees, GET /agent/launchpad/creator/fees. Each write call requires `x-api-key&#58; open_…`. Prerequisite&#58; openfin-setup (and the user has a Solana wallet provisioned at openfinance.tech).'
 ---
 
 # OpenFinance Launchpad (Solana DBC)
@@ -61,6 +61,43 @@ Reads (`get_pool_state`, `quote_buy`, `quote_sell`, `get_pool_fees`,
    them there.
 
 ## Endpoints
+
+### `GET /agent/launchpad/tokens` — explore feed (public, no auth)
+
+Paginated list of every token launched on the platform. Use for
+"show me trending memecoins on OpenFinance", "what just launched",
+"what tokens have I launched" (pass `creator`).
+
+| Param | Notes |
+|---|---|
+| `limit` | Default 30, max 100. |
+| `offset` | Pagination. |
+| `sort` | `newest` (default, by on-chain activation time) or `mcap` (by market cap). |
+| `creator` | Optional Solana wallet — filter to one creator's launches. |
+
+Returns:
+
+```json
+{
+  "tokens": [{
+    "pool": "…", "mint": "…",
+    "name": "…", "symbol": "…", "image": "https://…",
+    "creator": "…",
+    "curveProgress": 0.42,   // 0..1 — how full the bonding curve is
+    "graduated": false,
+    "priceSol": "…",
+    "marketCapSol": "…",
+    "marketCapUsd": "…"
+  }],
+  "total": 123, "limit": 30, "offset": 0,
+  "solUsd": 156.42
+}
+```
+
+To act on a token from the feed (quote / buy / sell), use `pool` as
+the `poolAddress` for the endpoints below. Always call
+`get_pool_state` before trading — `graduated` here may be ~20s stale
+(cache).
 
 ### `POST /agent/launchpad/launch` — create a token + open the DBC pool
 
