@@ -4,7 +4,7 @@ author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
 version: 1.0.1
-description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address — except for "my data" reads where the `/me/*` aliases inject the caller's address automatically. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank", "my positions / my activity / my trades / my closed positions", "what is wallet X doing on Polymarket", "X's positions / activity / trades", "claim my winnings", "redeem my Polymarket bet", "I won, cash out", "redeem all". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,closed-positions,activity,trades,portfolio,pnl}, me/{positions,closed-positions,activity,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/withdraw-and-bridge, redeem, redeem/all, order, order/market, orders, order/:id, order/:id/scoring, builder/*). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
+description: Polymarket — research, pricing, trading, deposit/withdraw, and trader leaderboard via the OpenFinance backend. Use for ANY Polymarket task. Polymarket runs a per-EOA "deposit wallet" smart contract that holds pUSD and is the on-chain `maker` on every order — pUSD on the EOA is stranded for trading, and `/user/:address/*` lookups must use the deposit-wallet address (NOT the EOA). Always call `GET /agent/polymarket/deposit-wallet` first to resolve the right address — except for "my data" reads where the `/me/*` aliases inject the caller's address automatically. Triggers — events / markets / odds in politics / sports (IPL, FIFA, NBA, NFL, F1, UFC, cricket) / crypto / culture / entertainment, place / cancel orders (limit GTC/GTD, market FOK/FAK, batch), neg-risk multi-outcome markets, tick sizes, builder attribution, "where do I deposit on Polymarket / what's my Polymarket address", "withdraw / cash out from Polymarket to {chain}", "Polymarket leaderboard / top traders / best wallets / who's making money / where do I rank", "my positions / my activity / my trades / my closed positions", "what is wallet X doing on Polymarket", "X's positions / activity / trades", "claim my winnings", "redeem my Polymarket bet", "I won, cash out", "redeem all", "wrap my USDC.e to pUSD", "convert USDC.e", "make my winnings tradeable". Covers /agent/polymarket/* (events, markets, search, orderbook, price(s), spread, last-trade-price, trades, market/:id/{open-interest,volume,liquidity,trades}, user/:address/{positions,closed-positions,activity,trades,portfolio,pnl}, me/{positions,closed-positions,activity,trades,portfolio,pnl}, leaderboard, deposit-wallet, deposit-wallet/wrap-collateral, deposit-wallet/withdraw-and-bridge, redeem, redeem/all, order, order/market, orders, order/:id, order/:id/scoring, builder/*). Two collateral assets on the deposit wallet — **pUSD** (tradeable on the CLOB, withdrawable) and **USDC.e** (what some resolved-position payouts and some bridges arrive in — depends on the market's settlement collateral; wrap to pUSD via `/wrap-collateral` before trading / withdrawing). For leaderboard queries — DO NOT web-fetch; this tool has the data. Prerequisite — openfin-setup.
 ---
 
 # Polymarket
@@ -23,8 +23,9 @@ description: Polymarket — research, pricing, trading, deposit/withdraw, and tr
 ## Safety contract
 
 Reads are safe. Anything that writes (`/order`, `/order/market`,
-`/orders`, cancels, `/deposit-wallet/withdraw-and-bridge`, `/redeem`,
-`/redeem/all`) requires:
+`/orders`, cancels, `/deposit-wallet/wrap-collateral`,
+`/deposit-wallet/withdraw-and-bridge`, `/redeem`, `/redeem/all`)
+requires:
 
 1. **Show the user before submitting**: market title + outcome, side,
    size in shares **and** USDC notional (`price × size`), limit price +
@@ -184,14 +185,35 @@ resolve `:address` for `/user/*` lookups.
     "depositWallet": "0x…",
     "deployed":      true,         // false until first CLOB contact (still correct address to receive pUSD)
     "pUSD":  { "eoa": "0.0", "depositWallet": "12.5" },
+    "usdce": { "depositWallet": "76.27" },   // present after redeems / some bridges — wrap to pUSD before trading/withdraw
     "matic": { "eoa": "0.5" }
   }
 }
 ```
 
 When the user asks "where do I send pUSD?", surface
-`data.depositWallet`. When showing balance, quote `pUSD.depositWallet`;
-flag `pUSD.eoa > 0` as stranded.
+`data.depositWallet`. When showing balance, sum
+`pUSD.depositWallet + usdce.depositWallet` for "Polymarket tradeable"
+total and flag the split — pUSD is trade-ready, USDC.e needs a wrap
+first. If `usdce.depositWallet > 0`, suggest `/wrap-collateral`
+before any trade or withdraw. Flag `pUSD.eoa > 0` as stranded.
+
+### `POST /agent/polymarket/deposit-wallet/wrap-collateral`
+
+Wraps USDC.e on the deposit wallet into pUSD 1:1 via Polymarket's
+CollateralOnramp — single gas-free relayer batch. Needed because
+USDC.e (which can arrive from a USDC.e-settled market redeem or some
+bridge inflows) is **not directly tradeable on the CLOB** and not
+pickup-able by `/withdraw-and-bridge`. pUSD-settled redeems don't
+need this step.
+
+| Field | Notes |
+|---|---|
+| `amount` | USDC.e wei (6 decimals). Omit to wrap the full USDC.e balance. |
+
+Returns `{ txHash, asset, amount, pUsdMinted, depositWallet }`. Call
+after `/redeem` (or whenever `usdce.depositWallet > 0`) before
+attempting to trade or withdraw.
 
 ### `POST /agent/polymarket/deposit-wallet/withdraw-and-bridge`
 
@@ -226,8 +248,24 @@ direct the user to Polymarket support.
 ### `POST /agent/polymarket/redeem` — claim winnings from one market
 
 After a market resolves, burns the caller's winning outcome tokens and
-pays the USDC payout into their deposit wallet (then cash out via
-`/deposit-wallet/withdraw-and-bridge`). Gas-free (Polymarket relayer).
+pays out into the deposit wallet. Gas-free (Polymarket relayer).
+
+**Payouts arrive in whichever collateral the market settles in** —
+some markets pay **pUSD** (already tradeable / withdrawable), others
+pay **USDC.e** (needs to be wrapped before trading or withdrawing).
+The backend resolves the right collateral per market automatically;
+the agent finds out which one it was by re-reading
+`GET /deposit-wallet` after the redeem and comparing balances.
+
+Cash-out flow:
+
+1. `/redeem` (or `/redeem/all`) → payout in the deposit wallet
+2. **If `usdce.depositWallet > 0`** after the redeem → `/wrap-collateral`
+   to convert it to pUSD (skip if everything paid in pUSD)
+3. `/deposit-wallet/withdraw-and-bridge` → final destination
+
+`/withdraw-and-bridge` operates on pUSD only, so any USDC.e portion is
+stranded until wrapped.
 
 | Field | Notes |
 |---|---|
@@ -242,7 +280,10 @@ market has resolved.
 
 Auto-discovers every redeemable position for the caller (via the
 data-api filter), dedupes by market, and redeems them in one gas-free
-relayer tx. Payouts land in the deposit wallet as USDC.
+relayer tx. **Payouts arrive in a mix of pUSD and USDC.e** depending
+on each market's collateral. Re-read `GET /deposit-wallet` after the
+batch — if `usdce.depositWallet > 0`, run `/wrap-collateral` before
+attempting to withdraw.
 
 Body: `{}`. Returns `{ count, redeemed: [...], txHash }`.
 
@@ -344,8 +385,8 @@ Single dispatch tool: `polymarket` with an `action` enum
 `get_user_positions`, `get_user_closed_positions`, `get_user_activity`,
 `get_user_trades`, `get_user_portfolio`, `get_user_pnl`,
 `get_market_stats`, `get_leaderboard`, `get_deposit_wallet`,
-`withdraw_and_bridge`, `redeem`, `redeem_all`, `place_order`,
-`place_market_order`, `place_orders`, `cancel`, …). Pass only the
+`wrap_collateral`, `withdraw_and_bridge`, `redeem`, `redeem_all`,
+`place_order`, `place_market_order`, `place_orders`, `cancel`, …). Pass only the
 params each action documents. For "my data" reads the `/me/*` REST
 aliases save a deposit-wallet lookup — fetched via the same dispatch
 tool with the caller's address resolved server-side.
