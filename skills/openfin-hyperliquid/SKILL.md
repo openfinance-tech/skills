@@ -4,7 +4,7 @@ author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
 version: 1.0.1
-description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, not a chain variant of Arbitrum — Arbitrum is just where the deposit address lives. Fund path — USDC on Arbitrum → `GET /agent/trading/deposit-address` → L1 validators credit the HL account. Exit path — withdraw_to_arbitrum burns HL USDC, validators co-sign payout to the same EOA on Arbitrum (~5 min, $1 fee). Hyperliquid accepts **only USDC** (not USDT, not USDC.e). INR funding route — Onramp.money INR → USDC on Polygon/BSC → Relay bridge → Arbitrum → deposit. Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction:"u"}` to upgrade (one-shot, idempotent). Triggers — "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit/withdraw to Hyperliquid/Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, portfolio, batch-portfolio-states, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Every user-scoped read accepts an optional `?address=0x…` query — falls back to caller; `/deposit-address` is deliberately caller-only.. Prerequisite — openfin-setup.
+description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, chain. Hyperliquid accepts **only USDC** (not USDT, not USDC.e). INR funding route — Onramp.money INR → USDC on Polygon/BSC → Relay bridge → Arbitrum → deposit. Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction:"u"}` to upgrade (one-shot, idempotent). Triggers — "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit to Hyperliquid", "withdraw to Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, portfolio, batch-portfolio-states, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Every user-scoped read accepts an optional `?address=0x…` query — falls back to caller; `/deposit-address` is deliberately caller-only.. Prerequisite — openfin-setup.
 ---
 
 # Hyperliquid Perps & Spot
@@ -31,18 +31,17 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 > Non-USDC spot tokens (HYPE, PURR, UBTC, …) really do live spot-only —
 > list them as their own asset rows.
 
-> **Chain model.** Hyperliquid is its **own L1**. Arbitrum is just where
-> the bridge lives. Don't say "USDC on Hyperliquid (Arbitrum)" or
-> "Hyperliquid on Arbitrum" — they're different surfaces.
+> **Chain model.** Hyperliquid is its **own L1**.
 >
-> - **Fund**: USDC on Arbitrum → `GET /agent/trading/deposit-address` →
+> - **Fund**: USDC on Hyperliquid → `GET /agent/trading/deposit-address` →
 >   L1 validators credit the HL account.
 > - **Exit**: `POST /withdraw` burns HL USDC; validators co-sign a payout
 >   to the same EOA on Arbitrum (~5 min, $1 fee).
-> - **Deposit token**: only USDC on Arbitrum (not USDT, not USDC.e).
->   That USDC funds the native dex + spot + HIP-4 outcomes. **HIP-3
->   dexes** carry their own collateral per dex (usually USDC, but
->   read the dex's `collateralToken` to be sure).
+> - **Deposit token**: only USDC on Hyperliquid (not USDT).
+>   That USDC funds the native dex + spot. **HIP-3 dexes** carry their
+>   own collateral per dex (often USDC, sometimes USDH — get USDH by
+>   swapping USDC → USDH on Hyperliquid spot); **HIP-4 outcomes** settle
+>   in **USDC** (no USDH, no swap).
 > - **INR funding path**: Onramp.money INR → USDC on Polygon/BSC →
 >   Relay bridge → Arbitrum → deposit address.
 
@@ -114,12 +113,12 @@ Three cases this covers:
 `"default"`, `"disabled"` (need upgrade). `POST /abstraction` only
 accepts `"u"`; `"i"` and `"p"` return 400.
 
-> **Native USDC vs HIP-3 / HIP-4 collateral.** `unifiedFreeUSDC` covers
-> the native dex + spot. HIP-3 dexes have their **own** `withdrawable`
-> per dex in their own `collateralToken` (usually USDC). If the user
-> trades HIP-3 and the dex uses a non-USDC collateral, or
-> HIP-4, the `insufficientCollateral` field on order rejections names
-> the right asset — see [Place](#place).
+> **Native USDC vs HIP-3 collateral.** `unifiedFreeUSDC` covers the
+> native dex + spot. HIP-4 outcomes also settle in **USDC** (same pool).
+> Only HIP-3 dexes differ — they have their **own** `withdrawable` per
+> dex in their own collateral token (often USDC, sometimes USDH). If the
+> user trades a USDH HIP-3 dex, the `insufficientCollateral` field on
+> order rejections names the right asset — see [Place](#place).
 
 ## Account & funding endpoints
 
@@ -175,10 +174,10 @@ accepts `"u"`; `"i"` and `"p"` return 400.
   Use for charts / historical PnL, not for current snapshot.
 - **`GET /agent/trading/rate-limit`** (`?address=`) — API rate-limit status.
 - **`GET /agent/trading/deposit-address`** — Address to send USDC to
-  fund Hyperliquid. The address lives **on Arbitrum** — send USDC on
-  Arbitrum (not USDT, not Polygon, not Ethereum). HIP-3 dexes that use
-  a non-USDC collateral aren't deposit-fundable here — get the asset
-  via Hyperliquid spot swap.
+  fund Hyperliquid. The address lives **on Hyperliquid**. HIP-4 outcomes settle
+  in USDC too. Only HIP-3 dexes that use non-USDC collateral (e.g. USDH)
+  need a different token that isn't deposit-fundable here — get it via a
+  Hyperliquid spot swap (USDC → USDH).
 - **`POST /agent/trading/withdraw`** body `{amount}` — Withdraw USDC to
   the same wallet's Arbitrum address. Flat $1 fee, ~5 min finalize.
   Destination is hardcoded to the signer; no third-party transfers.
@@ -329,16 +328,16 @@ a primary order) | `"positionTpsl"` (attach TP/SL to existing position).
 > **`insufficientCollateral` on rejections.** When an order fails with
 > "insufficient", the response carries
 > `insufficientCollateral: [{ requiredAsset, dex, context, message }]`.
-> The asset is **almost always USDC**:
+> The asset is **NOT always USDC**:
 >
 > - Native perps → `USDC`
 > - HIP-4 outcomes → `USDC`
-> - HIP-3 perps → the dex's `collateralToken` (usually USDC, but some
->   dexes use a different token — read it from the dex's `meta`)
+> - HIP-3 perps → the dex's `collateralToken` (often USDC, sometimes USDH)
 >
-> Relay `requiredAsset` + `message` to the user verbatim. For the
-> rare non-USDC HIP-3 dex, the user gets that asset by swapping on
-> Hyperliquid spot, not by depositing to the bridge.
+> Relay `requiredAsset` + `message` to the user verbatim. The only
+> non-USDC case is a HIP-3 dex on USDH — don't say "deposit USDC" when
+> the backend asks for USDH; the user gets USDH by swapping USDC → USDH
+> on Hyperliquid spot, not by depositing.
 
 ### Asset index formula (HIP-3 included)
 
@@ -364,11 +363,11 @@ Hyperliquid's prediction-market-style surface. Each **outcome** has two
 sides — `0` = No, `1` = Yes. Outcomes are grouped under a **question**
 (with a fallback outcome plus named outcomes).
 
-**Collateral: USDC.** `split` / `merge` / `negate` burn or mint USDC,
-and `place_order` on outcome share tokens debits / credits USDC too.
-The user's existing unified-account USDC balance covers HIP-4 directly
-— no extra swap or wrap step. On "insufficient" errors the response
-carries `insufficientCollateral: { requiredAsset: "USDC", … }`.
+**Collateral: USDC** (same as native perps). `split` / `merge` /
+`negate` burn or mint USDC, and `place_order` on outcome share tokens
+debits / credits USDC too — no USDH, no spot swap. (This changed: HIP-4
+previously required USDH; it no longer does.) On "insufficient" errors
+the response carries `insufficientCollateral: { requiredAsset: "USDC", … }`.
 
 **Asset-ID encoding** — outcome tokens trade through the regular spot
 `place_order` / `modify_order` / `cancel_order` path. Encoding:
