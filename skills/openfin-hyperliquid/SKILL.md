@@ -40,10 +40,9 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 > - **Exit**: `POST /withdraw` burns HL USDC; validators co-sign a payout
 >   to the same EOA on Arbitrum (~5 min, $1 fee).
 > - **Deposit token**: only USDC on Arbitrum (not USDT, not USDC.e).
->   That USDC funds the native dex + spot. **HIP-3 dexes** carry their
->   own collateral per dex (often USDC, sometimes USDH); **HIP-4
->   outcomes** settle in USDH. Get USDH by swapping USDC → USDH on
->   Hyperliquid spot.
+>   That USDC funds the native dex + spot + HIP-4 outcomes. **HIP-3
+>   dexes** carry their own collateral per dex (usually USDC, but
+>   read the dex's `collateralToken` to be sure).
 > - **INR funding path**: Onramp.money INR → USDC on Polygon/BSC →
 >   Relay bridge → Arbitrum → deposit address.
 
@@ -117,8 +116,8 @@ accepts `"u"`; `"i"` and `"p"` return 400.
 
 > **Native USDC vs HIP-3 / HIP-4 collateral.** `unifiedFreeUSDC` covers
 > the native dex + spot. HIP-3 dexes have their **own** `withdrawable`
-> per dex in their own collateral token (often USDC, sometimes USDH),
-> and HIP-4 outcomes settle in **USDH**. If the user trades HIP-3 or
+> per dex in their own `collateralToken` (usually USDC). If the user
+> trades HIP-3 and the dex uses a non-USDC collateral, or
 > HIP-4, the `insufficientCollateral` field on order rejections names
 > the right asset — see [Place](#place).
 
@@ -178,9 +177,8 @@ accepts `"u"`; `"i"` and `"p"` return 400.
 - **`GET /agent/trading/deposit-address`** — Address to send USDC to
   fund Hyperliquid. The address lives **on Arbitrum** — send USDC on
   Arbitrum (not USDT, not Polygon, not Ethereum). HIP-3 dexes that use
-  non-USDC collateral and all HIP-4 outcomes settle in tokens like
-  USDH that aren't deposit-fundable here — get them via Hyperliquid
-  spot swap (USDC → USDH).
+  a non-USDC collateral aren't deposit-fundable here — get the asset
+  via Hyperliquid spot swap.
 - **`POST /agent/trading/withdraw`** body `{amount}` — Withdraw USDC to
   the same wallet's Arbitrum address. Flat $1 fee, ~5 min finalize.
   Destination is hardcoded to the signer; no third-party transfers.
@@ -331,15 +329,16 @@ a primary order) | `"positionTpsl"` (attach TP/SL to existing position).
 > **`insufficientCollateral` on rejections.** When an order fails with
 > "insufficient", the response carries
 > `insufficientCollateral: [{ requiredAsset, dex, context, message }]`.
-> The asset is **NOT always USDC**:
+> The asset is **almost always USDC**:
 >
 > - Native perps → `USDC`
-> - HIP-3 perps → the dex's `collateralToken` (often USDC, sometimes USDH)
-> - HIP-4 outcomes → **`USDH`**
+> - HIP-4 outcomes → `USDC`
+> - HIP-3 perps → the dex's `collateralToken` (usually USDC, but some
+>   dexes use a different token — read it from the dex's `meta`)
 >
-> Relay `requiredAsset` + `message` to the user verbatim. Don't say
-> "deposit USDC" when the backend asks for USDH — the user gets USDH
-> by swapping USDC → USDH on Hyperliquid spot, not by depositing.
+> Relay `requiredAsset` + `message` to the user verbatim. For the
+> rare non-USDC HIP-3 dex, the user gets that asset by swapping on
+> Hyperliquid spot, not by depositing to the bridge.
 
 ### Asset index formula (HIP-3 included)
 
@@ -365,12 +364,11 @@ Hyperliquid's prediction-market-style surface. Each **outcome** has two
 sides — `0` = No, `1` = Yes. Outcomes are grouped under a **question**
 (with a fallback outcome plus named outcomes).
 
-**Collateral: USDH (not USDC).** `split` / `merge` / `negate` burn or
-mint USDH, and `place_order` on outcome share tokens debits / credits
-USDH too. A user with only USDC must first swap USDC → USDH on
-Hyperliquid spot before any HIP-4 action will succeed. On
-"insufficient" errors the response carries
-`insufficientCollateral: { requiredAsset: "USDH", … }`.
+**Collateral: USDC.** `split` / `merge` / `negate` burn or mint USDC,
+and `place_order` on outcome share tokens debits / credits USDC too.
+The user's existing unified-account USDC balance covers HIP-4 directly
+— no extra swap or wrap step. On "insufficient" errors the response
+carries `insufficientCollateral: { requiredAsset: "USDC", … }`.
 
 **Asset-ID encoding** — outcome tokens trade through the regular spot
 `place_order` / `modify_order` / `cancel_order` path. Encoding:
