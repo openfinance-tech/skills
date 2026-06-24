@@ -82,8 +82,13 @@ Returns:
   "tokens": [{
     "pool": "…", "mint": "…",
     "name": "…", "symbol": "…", "image": "https://…",
+    "description": "…",
+    "website": "https://…", "twitter": "https://…",
+    "telegram": "https://…", "externalUrl": "https://…",
+    "metadataUri": "https://…",                // pinned Metaplex JSON
     "creator": "…",
-    "curveProgress": 0.42,   // 0..1 — how full the bonding curve is
+    "createdAt": 1735689600,                    // unix sec — on-chain activation time
+    "curveProgress": 0.42,                      // 0..1 — how full the bonding curve is
     "graduated": false,
     "priceSol": "…",
     "marketCapSol": "…",
@@ -93,6 +98,9 @@ Returns:
   "solUsd": 156.42
 }
 ```
+
+Socials (`description`, `website`, `twitter`, `telegram`, `externalUrl`)
+are best-effort — omitted when the launch didn't set them.
 
 To act on a token from the feed (quote / buy / sell), use `pool` as
 the `poolAddress` for the endpoints below. Always call
@@ -107,7 +115,8 @@ the `poolAddress` for the endpoints below. Always call
 | `symbol` ✓ | Ticker (≤10 chars). |
 | `image` ✓ | Base64 PNG/JPG/SVG (`data:` prefix optional). Pinned to IPFS via Pinata. |
 | `description` | Optional. |
-| `website`, `twitter`, `telegram` | Optional links. |
+| `website` | Optional but **recommended** — tokens that ship with a website tend to bond / graduate at a higher rate. If the user didn't give one, ask before launching ("Want to add a website? Tokens with one tend to graduate more often. It's optional — I can launch without it."). Never block the launch if they decline. |
+| `twitter`, `telegram` | Optional links. |
 | `initialBuySol` | Optional **creator "dev buy"** — SOL amount to spend buying the new token atomically in the same launch tx. No snipe risk. Omit for no buy. |
 
 Returns `{ mintAddress, poolAddress, metadataUri, imageUri, signature,
@@ -204,6 +213,8 @@ into a DAMM v2 pool and mints two LP-position NFTs (returned as
 ## MCP
 
 Single dispatch tool: `openfinance-launchpad` with an `action` enum
-(`launch_token`, `get_pool_state`, `quote_buy`, `quote_sell`, `buy`,
-`sell`, `migrate`, `get_pool_fees`, `get_creator_fees`,
-`claim_creator_fees`). Pass only the params each action documents.
+(`launch_token`, `list_tokens`, `get_pool_state`, `quote_buy`,
+`quote_sell`, `buy`, `sell`, `migrate`, `get_pool_fees`,
+`get_creator_fees`, `claim_creator_fees`). Pass only the params each
+action documents. `list_tokens` is public (no auth) — same body as
+`GET /agent/launchpad/tokens`.
