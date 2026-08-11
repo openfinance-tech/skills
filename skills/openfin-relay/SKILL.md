@@ -138,7 +138,8 @@ External overrides are allowed — run the EXTERNAL BRIDGE check first.
 | Base | `8453` | | Scroll | `534352` |
 | Optimism | `10` | | zkSync Era | `324` |
 | Arbitrum | `42161` | | Hyperliquid | `1337` |
-| BSC | `56` | | **Solana** | **`792703809`** |
+| BSC | `56` | | Robinhood Chain | `4663` |
+| Avalanche | `43114` | | **Solana** | **`792703809`** |
 | Tron | `728126428` | | Bitcoin | `8253038` |
 
 Live list: `GET https://api.relay.link/chains`.

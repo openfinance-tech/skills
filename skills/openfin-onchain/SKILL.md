@@ -132,7 +132,8 @@ the ATA on the fly — sender pays ~0.002 SOL rent.
 | `amount` | string | Raw integer in smallest unit (wei / lamports / atomic). |
 
 Supported EVM chain IDs: `1`, `137`, `8453`, `42161`, `10`, `56`,
-`43114`, `59144`, `81457`, `534352`, `324`, `7777777`. Plus `"solana"`.
+`43114`, `59144`, `81457`, `534352`, `324`, `7777777`, `4663`
+(Robinhood Chain). Plus `"solana"`.
 
 ```json
 { "data": { "chainId": 137, "txHash": "0x…" } }
