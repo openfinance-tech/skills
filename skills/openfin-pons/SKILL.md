@@ -1,6 +1,6 @@
 ---
 name: openfin-pons
-description: 'OpenFinance Pons v2 — launch tokens on Robinhood Chain (EVM chain id 4663) paired against ETH or any Pons-approved asset, INCLUDING Robinhood''s own tokenized-stock mirrors (TSLA, AAPL, NVDA, GOOGL, AMZN, MSFT, META, COIN, PLTR, GME, SPY, and more). Use when the user wants to launch a memecoin against a tokenized stock, run a Pons-style launch on Robinhood Chain, or browse tokens already launched on Pons. Triggers — "launch a token against TSLA / NVDA / AAPL", "launch on Robinhood Chain", "Pons launch", "start a token paired with a stock", "TSLA token launch", "what quote assets can I pair against", "what tokenized stocks are available", "what Pons tokens have I launched". Signed via the caller''s Privy EVM wallet — NOT Solana. No platform fee — creatorFeeRecipient is always the launcher''s own wallet, so the launcher keeps 100% of Pons''s creator-fee bucket. Different chain / protocol from openfin-launchpad (Meteora DBC on Solana). Covers POST /agent/pons/launch, GET /agent/pons/quote-assets, GET /agent/pons/launch-terms, GET /agent/pons/tokens. Prerequisite — openfin-setup (and an EVM wallet with enough ETH on Robinhood Chain to cover the launch fee + optional dev buy).'
+description: 'OpenFinance Pons v2 — launch tokens on Robinhood Chain (EVM chain id 4663) paired against ETH or any Pons-approved asset, INCLUDING Robinhood''s own tokenized-stock mirrors (TSLA, AAPL, NVDA, GOOGL, AMZN, MSFT, META, COIN, PLTR, GME, SPY, and more). Use when the user wants to launch a memecoin against a tokenized stock, run a Pons-style launch on Robinhood Chain, or browse tokens already launched on Pons. Triggers — "launch a token against TSLA / NVDA / AAPL", "launch on Robinhood Chain", "Pons launch", "start a token paired with a stock", "TSLA token launch", "what quote assets can I pair against", "what tokenized stocks are available", "what Pons tokens have I launched". Signed via the caller''s Privy EVM wallet — NOT Solana. No platform fee — creatorFeeRecipient is always the launcher''s own wallet, so the launcher keeps 100% of Pons''s creator-fee bucket. Different chain / protocol from openfin-launchpad (Meteora DBC on Solana). Covers POST /agent/pons/launch, POST /agent/pons/upload-image, GET /agent/pons/quote-assets, GET /agent/pons/launch-terms, GET /agent/pons/tokens. Prerequisite — openfin-setup (and an EVM wallet with enough ETH on Robinhood Chain to cover the launch fee + optional dev buy).'
 ---
 
 # OpenFinance Pons (Robinhood Chain launches)
@@ -78,13 +78,28 @@ Call before `launch_token`. Returns:
 }
 ```
 
+### `POST /agent/pons/upload-image` — pre-pin the token image (REST only)
+
+Multipart upload (single field `image`, ≤10 MB, PNG / JPG / WebP / GIF).
+Pins straight to Pinata and returns:
+
+```json
+{ "imageUri": "ipfs://<hash>", "gatewayUrl": "https://…" }
+```
+
+Pass the returned `imageUri` as `imageUri` in the launch body — skips
+the base64 round-trip and is meaningfully faster for anything but
+tiny images. **REST only** (multipart doesn't fit the MCP transport,
+so the MCP `launch_token` action still takes `image` as base64).
+
 ### `POST /agent/pons/launch` — launch a token
 
 | Field | Notes |
 |---|---|
 | `name` ✓ | ≤60 chars. |
 | `symbol` ✓ | Ticker, ≤20 chars. |
-| `image` ✓ | Base64 PNG/JPG/WebP/GIF (`data:` prefix optional). Pinned to IPFS. |
+| `imageUri` ✓ | **Preferred.** An `ipfs://…` URI from `POST /agent/pons/upload-image` (multipart, single round-trip). Either this or `image` is required. |
+| `image` ✓ | Fallback — base64 PNG/JPG/WebP/GIF (`data:` prefix optional). Backend pins to IPFS. Slower than `imageUri` for anything but tiny images. |
 | `description` | ≤256 chars. |
 | `twitter`, `telegram` | Optional. |
 | `quoteAsset` ✓ | Symbol (e.g. `"TSLA"`, `"ETH"`, `"AAPL"`) or address from `list_quote_assets`. |
