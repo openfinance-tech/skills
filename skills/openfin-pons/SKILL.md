@@ -101,7 +101,7 @@ so the MCP `launch_token` action still takes `image` as base64).
 | `imageUri` ✓ | **Preferred.** An `ipfs://…` URI from `POST /agent/pons/upload-image` (multipart, single round-trip). Either this or `image` is required. |
 | `image` ✓ | Fallback — base64 PNG/JPG/WebP/GIF (`data:` prefix optional). Backend pins to IPFS. Slower than `imageUri` for anything but tiny images. |
 | `description` | ≤256 chars. |
-| `twitter`, `telegram` | Optional. |
+| `twitter`, `telegram`, `website` | Optional. **Full URLs only** (e.g. `https://x.com/handle`, `https://t.me/handle`) — pass exactly as the user gives them; don't construct a URL from a bare handle. |
 | `quoteAsset` ✓ | Symbol (e.g. `"TSLA"`, `"ETH"`, `"AAPL"`) or address from `list_quote_assets`. |
 | `creatorTaxBps` | 0..10000 bps trading tax paid to the launcher. Default 0. Capped by live `maxCreatorTaxBps`. |
 | `developerBuyAmount` | Optional dev buy in the **quote asset's own human units** (e.g. `0.05` for 0.05 ETH). Executed atomically in the launch tx via Pons's `launchAndBuy` helper. |
@@ -122,6 +122,14 @@ for "what has wallet X launched" / "my launches".
 | `limit` | Default 30, max 100. |
 | `offset` | Pagination. |
 | `creator` | EVM address filter. |
+
+Returns `{ tokens: [{ token, curve, pairToken, name, symbol, logoUri,
+creatorAddress, marketCapUsd, marketCapDisplay, twitter, telegram,
+website, ... }], total, limit, offset }`. `marketCapUsd` (raw
+number) + `marketCapDisplay` (compact — e.g. `"143K"`, `"2.5M"`,
+`"1.2B"`) come from Codex via Uniblock; both are `null` until Codex
+indexes the token — expected for very recently launched ones. Surface
+whatever's non-null; skip the row silently if both are.
 
 For a **cross-platform** view that also includes Solana Meteora
 launches, use `GET /agent/tokens` (see `openfin-launchpad`).

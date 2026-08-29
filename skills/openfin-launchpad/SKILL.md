@@ -1,6 +1,6 @@
 ---
 name: openfin-launchpad
-description: 'OpenFinance Launchpad — Solana token launchpad on a Meteora dynamic bonding curve (DBC). Launch a new SPL token in one tx, trade it on the curve, and graduate to a DAMM v2 AMM once the curve fills. Use whenever the user wants to create a new Solana memecoin / project token, browse tokens already launched on the platform, or trade one of these DBC tokens. Triggers&#58; "launch a token", "create a memecoin", "start a token on Solana", "DBC launch", "bonding curve launch", "buy / sell {token} on the curve", "graduate the curve", "claim my creator fees", "what fees has my token made", "pool state / curve progress", "show me tokens on the launchpad", "trending / newest tokens", "what tokens have I launched". Routing rule&#58; PRE-graduation trading (curve not full) → buy / sell here. POST-graduation (curve filled, DAMM v2 pool live) → openfin-onchain Jupiter (onchain_jupiter_order + onchain_jupiter_execute) — calling buy/sell on a graduated pool returns alreadyGraduated&#58; true. Solana-only — for EVM launches (Robinhood Chain paired against ETH or tokenized stocks) use `openfin-pons`; other chains use openfin-relay or openfin-onchain. Covers GET /agent/launchpad/tokens (public explore feed), POST /agent/launchpad/launch, GET /agent/launchpad/pool/:poolAddress, GET /agent/launchpad/pool/:poolAddress/{buy,sell}-quote, POST /agent/launchpad/pool/:poolAddress/{buy,sell,migrate,claim-creator-fees}, GET /agent/launchpad/pool/:poolAddress/fees, GET /agent/launchpad/creator/fees. Each write call requires `x-api-key&#58; open_…`. Prerequisite&#58; openfin-setup (and the user has a Solana wallet provisioned at openfinance.tech).'
+description: 'OpenFinance Launchpad — Solana token launchpad on a Meteora dynamic bonding curve (DBC). Launch a new SPL token in one tx, trade it on the curve, and graduate to a DAMM v2 AMM once the curve fills. Use whenever the user wants to create a new Solana memecoin / project token, browse tokens already launched on the platform, or trade one of these DBC tokens. Triggers&#58; "launch a token", "create a memecoin", "start a token on Solana", "DBC launch", "bonding curve launch", "buy / sell {token} on the curve", "graduate the curve", "claim my creator fees", "what fees has my token made", "pool state / curve progress", "show me tokens on the launchpad", "trending / newest tokens", "what tokens have I launched". Routing rule&#58; PRE-graduation trading (curve not full) → buy / sell here. POST-graduation (curve filled, DAMM v2 pool live) → openfin-onchain Jupiter (onchain_jupiter_order + onchain_jupiter_execute) — calling buy/sell on a graduated pool returns alreadyGraduated&#58; true. Solana-only — for EVM launches (Robinhood Chain paired against ETH or tokenized stocks) use `openfin-pons`; other chains use openfin-relay or openfin-onchain. Covers GET /agent/launchpad/tokens (public explore feed), GET /agent/tokens (public cross-platform feed — Meteora + Pons), POST /agent/launchpad/launch, GET /agent/launchpad/pool/:poolAddress, GET /agent/launchpad/pool/:poolAddress/{buy,sell}-quote, POST /agent/launchpad/pool/:poolAddress/{buy,sell,migrate,claim-creator-fees}, GET /agent/launchpad/pool/:poolAddress/fees, GET /agent/launchpad/creator/fees. Each write call requires `x-api-key&#58; open_…`. Prerequisite&#58; openfin-setup (and the user has a Solana wallet provisioned at openfinance.tech).'
 ---
 
 # OpenFinance Launchpad (Solana DBC)
@@ -106,6 +106,30 @@ To act on a token from the feed (quote / buy / sell), use `pool` as
 the `poolAddress` for the endpoints below. Always call
 `get_pool_state` before trading — `graduated` here may be ~20s stale
 (cache).
+
+### `GET /agent/tokens` — cross-platform launches feed (public, no auth)
+
+Merges every token launched across Meteora (Solana DBC) and Pons v2
+(Robinhood Chain) into one feed, newest first. **DB-only, fast** — for
+live price / curve progress on a specific platform, hit that
+platform's own endpoint (`/agent/launchpad/tokens` here, or
+`/agent/pons/tokens`).
+
+| Param | Notes |
+|---|---|
+| `limit` | Default 30, max 100. |
+| `offset` | Pagination. |
+| `platform` | `meteora` \| `pons`. Filter to one platform; omit for both. |
+| `creator` | Solana address (Meteora) or EVM address (Pons). |
+
+Returns `{ tokens: [{ platform, chain, mint, tradingVenue,
+quoteAsset, name, symbol, image, creator, creatorUserId?, createdAt,
+marketCapUsd, marketCapDisplay }], total, limit, offset }`.
+`marketCapUsd` (raw) + `marketCapDisplay` (compact — e.g. `"143K"`,
+`"2.5M"`, `"1.2B"`) come from Codex via Uniblock, enriched **only for
+the returned page** — not the full list. Both are `null` for very
+recently launched tokens Codex hasn't indexed yet; surface whichever
+is non-null.
 
 ### `POST /agent/launchpad/launch` — create a token + open the DBC pool
 
