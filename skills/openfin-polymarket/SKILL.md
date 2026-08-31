@@ -197,6 +197,12 @@ When the user asks "where do I send pUSD?", surface
 total and flag the split — pUSD is trade-ready, USDC.e needs a wrap
 first. If `usdce.depositWallet > 0`, suggest `/wrap-collateral`
 before any trade or withdraw. Flag `pUSD.eoa > 0` as stranded.
+`deployed: false` is purely informational — funds sent to the deposit
+wallet are safe to receive either way, and every call that needs the
+proxy on-chain (`/approvals`, `/redeem`, `/wrap-collateral`,
+`/withdraw-and-bridge`) deploys it on demand automatically if it isn't
+deployed yet. Never tell the user to go deploy it manually via the
+Polymarket web UI — that's not needed.
 
 ### `POST /agent/polymarket/deposit-wallet/wrap-collateral`
 
@@ -205,7 +211,9 @@ CollateralOnramp — single gas-free relayer batch. Needed because
 USDC.e (which can arrive from a USDC.e-settled market redeem or some
 bridge inflows) is **not directly tradeable on the CLOB** and not
 pickup-able by `/withdraw-and-bridge`. pUSD-settled redeems don't
-need this step.
+need this step. Auto-deploys the deposit wallet first if it isn't
+deployed yet (e.g. USDC.e arrived before the EOA's first CLOB
+contact) — works even on a brand-new, never-deployed deposit wallet.
 
 | Field | Notes |
 |---|---|
@@ -221,7 +229,8 @@ Cash out pUSD to any chain/token via Polymarket's official bridge
 (`bridge.polymarket.com`). Backend transfers pUSD from the deposit
 wallet to a one-time bridge address through Polymarket's relayer;
 Polymarket auto-bridges and swaps server-side. **Gas-free for the user**;
-no slippage knob (Polymarket handles it).
+no slippage knob (Polymarket handles it). Auto-deploys the deposit
+wallet first if it isn't deployed yet, same as `/wrap-collateral`.
 
 | Field | Type | Notes |
 |---|---|---|
