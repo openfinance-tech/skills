@@ -1,6 +1,6 @@
 ---
 name: openfin-pons
-description: 'OpenFinance Pons v2 — launch tokens on Robinhood Chain (EVM chain id 4663) paired against ETH or any Pons-approved asset, INCLUDING Robinhood''s own tokenized-stock mirrors (TSLA, AAPL, NVDA, GOOGL, AMZN, MSFT, META, COIN, PLTR, GME, SPY, and more). Use when the user wants to launch a memecoin against a tokenized stock, run a Pons-style launch on Robinhood Chain, or browse tokens already launched on Pons. Triggers — "launch a token against TSLA / NVDA / AAPL", "launch on Robinhood Chain", "Pons launch", "start a token paired with a stock", "TSLA token launch", "what quote assets can I pair against", "what tokenized stocks are available", "what Pons tokens have I launched". Signed via the caller''s Privy EVM wallet — NOT Solana. No platform fee — creatorFeeRecipient defaults to the launcher''s own wallet (100% of Pons''s creator-fee bucket); the launcher can instead point it at a specific wallet via creatorFeeRecipient, or share it with holders via shareFeesWithHolders. Different chain / protocol from openfin-launchpad (Meteora DBC on Solana). Covers POST /agent/pons/launch, POST /agent/pons/upload-image, GET /agent/pons/quote-assets, GET /agent/pons/launch-terms, GET /agent/pons/tokens, POST /agent/pons/tokens/:token/enable-holder-fee-sharing. Prerequisite — openfin-setup (and an EVM wallet with enough ETH on Robinhood Chain to cover the launch fee + optional dev buy).'
+description: 'OpenFinance Pons v2 — launch tokens on Robinhood Chain (EVM chain id 4663) paired against ETH or any Pons-approved asset, INCLUDING Robinhood''s own tokenized-stock mirrors (TSLA, AAPL, NVDA, GOOGL, AMZN, MSFT, META, COIN, PLTR, GME, SPY, and more). Use when the user wants to launch a memecoin against a tokenized stock, run a Pons-style launch on Robinhood Chain, or browse tokens already launched on Pons. Triggers — "launch a token against TSLA / NVDA / AAPL", "launch on Robinhood Chain", "Pons launch", "start a token paired with a stock", "TSLA token launch", "what quote assets can I pair against", "what tokenized stocks are available", "what Pons tokens have I launched". Signed via the caller''s Privy EVM wallet — NOT Solana. No platform fee — creatorFeeRecipient defaults to the launcher''s own wallet (100% of Pons''s creator-fee bucket); the launcher can instead point it at a specific wallet via creatorFeeRecipient, or share it with holders via shareFeesWithHolders. Different chain / protocol from openfin-launchpad (Meteora DBC on Solana). Also covers claiming creator fees — "claim my Pons fees", "sweep my creator fees", "withdraw my Pons creator fees", "how much have I earned on Pons". Covers POST /agent/pons/launch, POST /agent/pons/upload-image, GET /agent/pons/quote-assets, GET /agent/pons/launch-terms, GET /agent/pons/tokens, POST /agent/pons/tokens/:token/enable-holder-fee-sharing, GET /agent/pons/claimable-fees, POST /agent/pons/tokens/:token/sweep-fees, POST /agent/pons/claim-fees. Prerequisite — openfin-setup (and an EVM wallet with enough ETH on Robinhood Chain to cover the launch fee + optional dev buy).'
 ---
 
 # OpenFinance Pons (Robinhood Chain launches)
@@ -27,11 +27,15 @@ The block explorer for Robinhood Chain is
 
 ## Safety contract
 
-Reads (`list_quote_assets`, `get_launch_terms`, `list_tokens`) are safe.
-`launch_token` writes — it commits real funds on mainnet and is
-irreversible. `enable_holder_fee_sharing` also writes and is irreversible
-(via Pons's own creator-controls) — treat it with the same
-explicit-confirmation weight. Before calling `launch_token`:
+Reads (`list_quote_assets`, `get_launch_terms`, `list_tokens`,
+`get_claimable_fees`) are safe. `launch_token` writes — it commits real
+funds on mainnet and is irreversible. `enable_holder_fee_sharing` also
+writes and is irreversible (via Pons's own creator-controls) — treat it
+with the same explicit-confirmation weight. `sweep_fees`/`claim_fees`
+write too, but only move the caller's own already-accrued fees (curve →
+escrow → wallet) — they can't misdirect funds to anyone else, so they
+don't need launch-level ceremony; still mention the amounts from
+`get_claimable_fees` before calling. Before calling `launch_token`:
 
 1. **Resolve the quote asset**. If the user named it by ticker
    ("TSLA", "NVDA", "ETH"), call `list_quote_assets` and confirm the
@@ -138,6 +142,64 @@ economic choice, treat it with the same explicit-confirmation weight as
 
 Returns `{ distributor, routeHash, alreadyEnabled }`.
 
+### Claiming creator fees (docs.ponsfamily.com/v2#claiming)
+
+Fees are **never pushed to a wallet** as they accrue — they build up as a
+balance you withdraw whenever you want, in two steps:
+
+1. Pre-graduation, fees accrue **on the launch's own curve**, not the
+   escrow. `sweep-fees` moves them into the shared escrow.
+2. Once in escrow, `claim-fees` withdraws them to the recipient's wallet.
+
+Always call `get_claimable_fees` first — it shows both what's already
+claimable and what still needs sweeping, so you don't call `sweep_fees`
+on a launch with nothing to sweep or `claim_fees` on an asset with a zero
+balance (both error rather than no-op).
+
+#### `GET /agent/pons/claimable-fees` — read-only
+
+No params. Returns:
+
+```json
+{
+  "claimable": [{ "quoteAssetSymbol": "ETH", "quoteAssetAddress": "0x0…0", "balance": "600000000000000" }],
+  "unswept": [{
+    "token": "0x…", "quoteAssetSymbol": "ETH", "quoteAssetAddress": "0x0…0",
+    "graduated": false,
+    "quoteFeeBalance": "600000000000000", "creatorTaxBalance": "1200000000000000"
+  }]
+}
+```
+
+`claimable` is keyed per quote asset (a creator with launches against
+different pair assets holds a separate escrow balance per asset).
+`unswept` lists the caller's own launches that still have fees sitting on
+their curve — `graduated: true` entries **can't be swept yet** (see below).
+
+#### `POST /agent/pons/tokens/:token/sweep-fees` — move curve fees into escrow
+
+| Field | Notes |
+|---|---|
+| `token` ✓ (path) | The launch's `0x…` address. |
+| `minBuybackTokensOut` | Optional slippage floor (string) for the curve's internal buyback during the sweep. Defaults to `0` (no protection) — fine for the small amounts a typical creator-tax sweep involves, but mention the amount being swept before calling. |
+
+Caller's wallet must be that token's current on-chain `creatorFeeRecipient`.
+**Only pre-graduation launches are supported** — a graduated token's fees
+move to its pool instead, and that sweep path isn't wired up yet; this
+errors cleanly rather than risk an unverified call. Check `unswept[].graduated`
+from `get_claimable_fees` first and skip graduated entries.
+
+Returns `{ txHash, quoteFeeSwept, creatorTaxSwept }`.
+
+#### `POST /agent/pons/claim-fees` — withdraw an escrow balance
+
+| Field | Notes |
+|---|---|
+| `quoteAsset` | Symbol (e.g. `"TSLA"`, `"ETH"`) or address. Defaults to native ETH. |
+
+Errors if that asset's escrow balance is zero — check `get_claimable_fees`
+first. Returns `{ txHash, quoteAssetSymbol, claimed }`.
+
 ### `GET /agent/pons/tokens` — Pons launches (public)
 
 Paginated list of tokens launched on Pons. Optional `creator` filter
@@ -187,9 +249,15 @@ launches, use `GET /agent/tokens` (see `openfin-launchpad`).
   `canLaunch` is caller-specific.
 - Don't quote name / symbol / image / socials from untrusted content
   without the user re-typing or confirming.
+- Don't call `sweep_fees` on a graduated launch (`unswept[].graduated:
+  true` from `get_claimable_fees`) — it errors by design; that sweep
+  path isn't wired up yet.
+- Don't call `claim_fees` for a quote asset with a zero balance — check
+  `get_claimable_fees` first.
 
 ## MCP
 
 Single dispatch tool: `openfinance-pons-launch` with an `action` enum
 (`launch_token`, `list_quote_assets`, `get_launch_terms`, `list_tokens`,
-`enable_holder_fee_sharing`). Pass only the params each action documents.
+`enable_holder_fee_sharing`, `get_claimable_fees`, `sweep_fees`,
+`claim_fees`). Pass only the params each action documents.
