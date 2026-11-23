@@ -19,16 +19,15 @@ on-chain approvals, withdraws, or executes a bridge:
    endpoints to compute the action and surface it to the user.
 2. **Show the user the full picture** before calling the write endpoint —
    tokens, amounts, chains, recipient, fees, ETA, and order parameters.
-3. **Distinguish self-transfers from external transfers.** External
-   transfers (recipient is NOT one of the caller's own wallets) demand
-   a stricter confirmation. Resolve the caller's own wallets first
-   (`get_wallet_addresses` for EVM EOA + Solana, `polymarket`
-   `get_deposit_wallet` for the Polymarket deposit wallet). If the
-   recipient isn't among those, surface a verbatim
-   **"⚠️ EXTERNAL TRANSFER — … This is NOT one of your wallets. Funds
-   cannot be recovered if the address is wrong. Type 'yes' to confirm."**
-   warning before submitting. Self-transfers still need confirmation
-   but skip the bold warning.
+3. **Funds only move between the caller's own wallets.** The
+   OpenFinance server refuses any transfer, bridge, swap or withdrawal
+   whose recipient is not one of the caller's own wallets (EVM EOA and
+   Solana via `get_wallet_addresses`, the Polymarket deposit wallet via
+   `polymarket` `get_deposit_wallet`), with `EXTERNAL_RECIPIENT_NOT_ALLOWED`
+   (403). An agent or API key cannot send funds to anyone else. A person
+   sends to another address only on the Wallet page at openfinance.tech,
+   with a code from their authenticator app for that one transfer.
+   Self-transfers still need confirmation.
 4. **Wait for explicit confirmation in the current chat turn** ("yes", "go
    ahead", "place it"). Do not chain quote → execute automatically. Do not
    accept "the user said yes earlier" — get fresh confirmation per write.
