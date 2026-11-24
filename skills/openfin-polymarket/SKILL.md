@@ -19,6 +19,14 @@ description: Polymarket — research, pricing, trading, deposit/withdraw, and tr
 > deposit address, balance, positions, trades, or rankings. pUSD on the
 > EOA is stranded; pUSD on the deposit wallet is usable. MATIC for gas
 > stays on the EOA.
+>
+> **Only pUSD on Polygon goes into the deposit wallet.** Whenever you
+> show the deposit address or help the user fund Polymarket, warn them:
+> "Only deposit pUSD on Polygon to your Polymarket wallet. Funds sent on the wrong network or as the wrong token cannot be recovered."
+> To fund it from another chain or token, bridge with `openfin-relay`
+> to Polygon (137) with pUSD `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB` as
+> `destinationCurrency` and the deposit wallet as `recipient`. Never
+> send any other token, or any token on another network, to it.
 
 ## Safety contract
 
@@ -38,15 +46,15 @@ requires:
    confirm scope. For single cancels, echo the orderId back.
 5. **Withdraw default = full balance.** Confirm "withdraw all" with the
    user before calling `/deposit-wallet/withdraw-and-bridge` if `amount`
-   is omitted. If `destRecipient` isn't one of the caller's own wallets
+   is omitted. `destRecipient` must be one of the caller's own wallets
    (resolve via `GET /agent/wallets` for EVM/Solana and
-   `/agent/polymarket/deposit-wallet` for the deposit wallet), surface
-   verbatim:
-
-   > **⚠️ EXTERNAL TRANSFER — withdrawing {amount} pUSD to {destToken}
-   > on chain {destChainId}, recipient {destRecipient}. This is NOT one
-   > of your wallets. Funds cannot be recovered if the address is wrong.
-   > Type 'yes' to confirm.**
+   `/agent/polymarket/deposit-wallet` for the deposit wallet). For any
+   other address the server refuses it with
+   `EXTERNAL_RECIPIENT_NOT_ALLOWED` (403). Do not retry with another
+   address or another tool. Tell the user that agents can only move
+   funds between their own wallets, and that sending to someone else is
+   done on the Wallet page at https://openfinance.tech/wallet with a
+   code from their authenticator app.
 
 6. **Redeem all** — `/redeem/all` claims every redeemable position in
    one batch. Preview the count via
@@ -192,7 +200,8 @@ resolve `:address` for `/user/*` lookups.
 ```
 
 When the user asks "where do I send pUSD?", surface
-`data.depositWallet`. When showing balance, sum
+`data.depositWallet` together with the warning: only pUSD on Polygon, nothing
+else. When showing balance, sum
 `pUSD.depositWallet + usdce.depositWallet` for "Polymarket tradeable"
 total and flag the split — pUSD is trade-ready, USDC.e needs a wrap
 first. If `usdce.depositWallet > 0`, suggest `/wrap-collateral`
@@ -237,7 +246,7 @@ wallet first if it isn't deployed yet, same as `/wrap-collateral`.
 | `destChainId` | number \| string \| `"solana"` | **Required.** Chain ID — either `8453` or `"8453"` (backend normalizes). Use `"solana"` for Solana. |
 | `destToken` | string | **Required.** Token contract on the destination chain. |
 | `amount` | string | pUSD wei (6 decimals). Default = full deposit-wallet balance. |
-| `destRecipient` | string | Default = caller's EOA. External addresses trigger the EXTERNAL TRANSFER warning. |
+| `destRecipient` | string | Default = caller's EOA. Must be one of the caller's own wallets; any other address is refused by the server. |
 
 ```json
 {
