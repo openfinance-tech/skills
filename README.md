@@ -50,6 +50,8 @@ There's nothing to host. Your agent calls OpenFinance's hosted API, using the sk
 
 For AI agents: [AGENTS.md](./AGENTS.md) has the short version.
 
+Trading Polymarket? See [openfinance-tech/polymarket-mcp](https://github.com/openfinance-tech/polymarket-mcp) for setup in Claude, ChatGPT, Grok, Meta Muse, OpenClaw, Hermes Agent and more.
+
 ## Risk & audits
 
 These skills sign real on-chain transactions on a user's wallet through
