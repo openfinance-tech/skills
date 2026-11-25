@@ -1,17 +1,17 @@
 # openfinance-tech/skills
 
-Agent skills for the [OpenFinance](https://openfinance.tech) backend — curated
-playbooks that teach AI agents how to trade on Polymarket and Hyperliquid,
-bridge via Relay, and use the user's OpenFinance-managed wallets correctly.
+Agent skills for [OpenFinance](https://openfinance.tech): curated playbooks
+that teach AI agents how to trade on Polymarket and Hyperliquid, bridge via
+Relay, launch tokens, and use the user's OpenFinance wallets correctly.
 
-Skills lead with the actual backend routes (`/agent/…`) and WebSocket
-channels, so they're useful whether you're integrating via direct HTTP/WS,
-through an SDK, or via the OpenFinance MCP.
+Skills lead with the actual API routes (`/agent/…`) and WebSocket channels,
+so they're useful whether you're integrating via direct HTTP/WS, through an
+SDK, or via the [OpenFinance MCP server](https://github.com/openfinance-tech/mcp).
 
 ## Install
 
 ```bash
-# Project-level (recommended — commit with your codebase)
+# Project-level (recommended: commit with your codebase)
 npx skills add openfinance-tech/skills
 
 # Or global
@@ -22,6 +22,18 @@ npx skills add openfinance-tech/skills -a claude-code
 ```
 
 Requires the CLI from [vercel-labs/skills](https://github.com/vercel-labs/skills).
+Add `-y` to skip the prompts.
+
+## What you need
+
+- An OpenFinance account. Sign in at [openfinance.tech](https://openfinance.tech);
+  your EVM and Solana wallets are created for you.
+- An API key (it starts with `open_`). Open **External AI** in the sidebar and
+  copy it. Keep it in the `OPENFINANCE_API_KEY` environment variable.
+
+There's nothing to host. Your agent calls OpenFinance's hosted API, using the skills as instructions. Start with
+`openfin-setup`, which checks the key before any other skill runs. Docs:
+[docs.openfinance.tech](https://docs.openfinance.tech).
 
 ## Skills included
 
@@ -33,24 +45,20 @@ Requires the CLI from [vercel-labs/skills](https://github.com/vercel-labs/skills
 | [`openfin-hyperliquid`](./skills/openfin-hyperliquid) | Perp/spot trading, leverage, TWAP, WS market data, unifiedAccount auto-upgrade |
 | [`openfin-relay`](./skills/openfin-relay) | Cross-chain swaps and bridging between your own wallets, Solana routes |
 | [`openfin-onchain`](./skills/openfin-onchain) | Token metadata, wallet portfolios, balances, USD prices, same-chain transfers |
-| [`openfin-launchpad`](./skills/openfin-launchpad) | Solana token launchpad (Meteora DBC) — launch, trade on the curve, migrate to DAMM v2, claim creator fees |
+| [`openfin-launchpad`](./skills/openfin-launchpad) | Solana token launchpad (Meteora DBC): launch, trade on the curve, migrate to DAMM v2, claim creator fees |
 | [`openfin-onramp`](./skills/openfin-onramp) | Fiat → crypto via Moonpay (cards, global) or Onramp.money (UPI / IMPS, India) |
 
-## Backend prerequisites
-
-Skills assume a running OpenFinance backend with embedded wallets provisioned
-for each user. See [openfinance-tech docs](https://openfinance.tech/docs)
-for deployment and environment setup.
+For AI agents: [AGENTS.md](./AGENTS.md) has the short version.
 
 ## Risk & audits
 
 These skills sign real on-chain transactions on a user's wallet through
-the OpenFinance backend. Registry auditors flag the trading skills as
-**MEDIUM-risk** on that basis, and that flag is correct:
+OpenFinance. Registry auditors flag the trading skills as **MEDIUM-risk** on
+that basis, and that flag is correct:
 
 | Auditor | Finding | What it means |
 |---|---|---|
-| Snyk `W009` | "Direct money access capability detected" (risk 1.00) | The skill drives the OpenFinance backend's signing endpoints. Category-based rule — fires on any signing skill. |
+| Snyk `W009` | "Direct money access capability detected" (risk 1.00) | The skill drives OpenFinance's signing endpoints. Category-based rule: it fires on any signing skill. |
 | Socket | `SUSPICIOUS` MEDIUM | "Purpose-aligned, no install-chain or malware indicators" but enables real-world asset movement. |
 
 Neither finding identifies a malicious pattern, dependency hazard, or
@@ -59,7 +67,7 @@ which is the whole point.
 
 What's already in place to keep that capability safe:
 
-- **Each transactional skill ships an explicit `## Safety contract`** —
+- **Each transactional skill ships an explicit `## Safety contract`**:
   read-only quote first, full disclosure of amounts/chains/fees, **explicit
   per-write user confirmation** in chat, no recipient/contract addresses
   pulled from untrusted content, re-quote on any parameter change. See
@@ -71,8 +79,8 @@ What's already in place to keep that capability safe:
   `get_deposit_wallet`). Sending to another person happens only on the
   Wallet page at openfinance.tech, with a code from the user's
   authenticator app.
-- **No secrets, scripts, or binaries in this repo** — only markdown.
-  Network calls happen from the agent and the OpenFinance backend, not
+- **No secrets, scripts, or binaries in this repo**: only markdown.
+  Network calls happen from the agent and OpenFinance's servers, not
   from anything installed by `npx skills add`.
 
 Found a way these skills could mislead an agent into a write without
