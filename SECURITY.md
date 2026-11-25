@@ -57,6 +57,8 @@ files.
 ## Reporting issues
 
 Found something that isn't covered by the safety contract — or content that
-could mislead an agent into a write without confirmation? Open an issue at
-https://github.com/openfinance-tech/skills/issues, or reach out via
-https://openfinance.tech.
+could mislead an agent into a write without confirmation? Report it
+privately with **Report a vulnerability** on this repository's
+[Security tab](../../security/advisories/new). For anything that isn't a
+security problem, open an issue at
+https://github.com/openfinance-tech/skills/issues.
