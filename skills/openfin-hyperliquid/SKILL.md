@@ -4,7 +4,7 @@ author: OpenFinance
 homepage: https://openfinance.tech
 license: Proprietary
 version: 1.0.1
-description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, chain. Hyperliquid accepts **only USDC** (not USDT, not USDC.e). INR funding route — Onramp.money INR → USDC on Polygon/BSC → Relay bridge → Arbitrum → deposit. Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction:"u"}` to upgrade (one-shot, idempotent). Triggers — "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit to Hyperliquid", "withdraw to Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, portfolio, batch-portfolio-states, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Every user-scoped read accepts an optional `?address=0x…` query — falls back to caller; `/deposit-address` is deliberately caller-only.. Prerequisite — openfin-setup.
+description: Hyperliquid perps + spot trading via the OpenFinance backend. Use for any Hyperliquid task — orders (perp, spot, TWAP, HIP-3 stocks/commodities/FX/preipo, HIP-4 binary outcomes), leverage/margin, account balance, market data (REST + WebSocket), OHLCV candles, deposits/withdrawals. Hyperliquid is its **own L1**, chain. Hyperliquid accepts **only USDC** (not USDT, not USDC.e). Funding — the user's OpenFinance address is their own wallet on every chain; USDC sent to it on Arbitrum is NOT on Hyperliquid until moved in with Relay (destination chain 1337). INR route — Onramp.money INR → USDC on Polygon/BSC → Relay to Hyperliquid (1337). Hyperliquid runs **unifiedAccount** so spot+perp USDC share one margin pool — agents MUST sum `account.withdrawable + spot.USDC.total` and present it as ONE figure (NEVER "Perp withdrawable $0" or "Spot USDC" as separate lines). On first balance read, if `account.withdrawable > 0` and `GET /agent/trading/abstraction` returns `"default"` or `"disabled"`, POST `{abstraction:"u"}` to upgrade (one-shot, idempotent). Triggers — "buy/long/short/sell BTC/ETH/SOL/NVDA/TSLA/...", "perp/spot order", "Gtc/Ioc/Alo/FrontendMarket", "TP/SL", "TWAP", "leverage/cross/isolated", "deposit to Hyperliquid", "withdraw to Arbitrum", "HL balance", "HIP-3", "HIP-4", "outcome / split / merge / negate", "Yes/No shares", "HLP". Covers /agent/trading/* (market/{mids,metas,perp-metas,perp-categories,spot-metas,l2-book,token,all-dexs-asset-ctxs,outcome-meta}, deposit-address, account, portfolio, batch-portfolio-states, rate-limit, orders, orders/details, orders/history, orders/:oid/status, twap, twap/fills, twap/:id, fills, fills/by-time, funding, leverage, margin, withdraw, abstraction, outcome/{split,merge,merge-question,negate}). Every user-scoped read accepts an optional `?address=0x…` query — falls back to caller; `/deposit-address` is deliberately caller-only.. Prerequisite — openfin-setup.
 ---
 
 # Hyperliquid Perps & Spot
@@ -33,17 +33,32 @@ description: Hyperliquid perps + spot trading via the OpenFinance backend. Use f
 
 > **Chain model.** Hyperliquid is its **own L1**.
 >
-> - **Fund**: USDC on Hyperliquid → `GET /agent/trading/deposit-address` →
->   L1 validators credit the HL account.
+> - **Fund**: `GET /agent/trading/deposit-address` returns the user's
+>   **own** OpenFinance wallet address — the same address on every EVM
+>   chain and on Hyperliquid. It is **not** a bridge. USDC only counts once
+>   it is **in** the Hyperliquid account. Two ways in:
+>   1. From another Hyperliquid account: a Hyperliquid transfer to this
+>      address. Arrives instantly.
+>   2. USDC in the user's wallet on Arbitrum or another chain: move it with
+>      `openfin-relay` — destination chain `1337`, destination currency
+>      Perps USDC `0x00000000000000000000000000000000`, `recipient` left
+>      empty (defaults to the user's own address). Pass `usePermit: true`
+>      when the wallet has no gas token on the source chain.
+>
+>   Sending USDC to this address on Arbitrum does **NOT** deposit it to
+>   Hyperliquid by itself — never say it does. Never give out a bridge
+>   contract address (bridge deposits credit whoever sent them), and never
+>   suggest HyperEVM for trading funds.
 > - **Exit**: `POST /withdraw` burns HL USDC; validators co-sign a payout
 >   to the same EOA on Arbitrum (~5 min, $1 fee).
-> - **Deposit token**: only USDC on Hyperliquid (not USDT).
+> - **Deposit token**: only USDC (not USDT, not USDC.e).
 >   That USDC funds the native dex + spot. **HIP-3 dexes** carry their
 >   own collateral per dex (often USDC, sometimes USDH — get USDH by
 >   swapping USDC → USDH on Hyperliquid spot); **HIP-4 outcomes** settle
 >   in **USDC** (no USDH, no swap).
 > - **INR funding path**: Onramp.money INR → USDC on Polygon/BSC →
->   Relay bridge → Arbitrum → deposit address.
+>   `openfin-relay` to Hyperliquid (destination chain `1337`), recipient =
+>   the user's own address.
 
 ## Safety contract
 
@@ -76,9 +91,9 @@ Reads (account, market, WS) are safe. Writes — `POST /orders`,
 ## Prerequisite
 
 1. `openfin-setup` complete.
-2. For trading: USDC funded into the Hyperliquid account via
-   `GET /agent/trading/deposit-address` (chain routing handled
-   automatically).
+2. For trading: USDC **in** the Hyperliquid account. USDC sitting in the
+   user's wallet on Arbitrum or another chain must first be moved in with
+   `openfin-relay` (destination chain `1337`) — see **Fund** above.
 
 ---
 
@@ -173,9 +188,12 @@ accepts `"u"`; `"i"` and `"p"` return 400.
   curve (different shape from `/account`: portfolio over time windows).
   Use for charts / historical PnL, not for current snapshot.
 - **`GET /agent/trading/rate-limit`** (`?address=`) — API rate-limit status.
-- **`GET /agent/trading/deposit-address`** — Address to send USDC to
-  fund Hyperliquid. The address lives **on Hyperliquid**. HIP-4 outcomes settle
-  in USDC too. Only HIP-3 dexes that use non-USDC collateral (e.g. USDH)
+- **`GET /agent/trading/deposit-address`** — The user's own OpenFinance
+  wallet address (same on every EVM chain and on Hyperliquid). Not a
+  bridge: only a transfer from another Hyperliquid account lands on
+  Hyperliquid directly; USDC sent here on Arbitrum or any other chain stays
+  in the user's wallet on that chain until moved in with `openfin-relay`
+  (destination chain `1337`). HIP-4 outcomes settle in USDC too. Only HIP-3 dexes that use non-USDC collateral (e.g. USDH)
   need a different token that isn't deposit-fundable here — get it via a
   Hyperliquid spot swap (USDC → USDH).
 - **`POST /agent/trading/withdraw`** body `{amount}` — Withdraw USDC to
@@ -272,8 +290,10 @@ Spot sells: read the base token's `total` from `/account/spot`.
 
 #### Funding ladder (when short)
 
-1. **Bridge from another chain.** `GET /agent/wallets`; if any chain has
-   USDC, bridge via `openfin-relay` into the Hyperliquid deposit address.
+1. **Move in from another chain.** `GET /agent/wallets`; if any chain has
+   USDC, move it with `openfin-relay` to Hyperliquid (destination chain
+   `1337`, Perps USDC `0x00000000000000000000000000000000`, recipient left
+   empty). Use `usePermit: true` if that wallet has no gas token.
 2. **Onramp** (if every wallet is empty). Show wallet addresses and
    suggest the user deposit, then bridge → trade.
 

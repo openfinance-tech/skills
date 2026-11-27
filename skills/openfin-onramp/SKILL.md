@@ -108,10 +108,14 @@ Missing wallet → request fails; send the user to openfinance.tech.
 
 - Onramp lands on chain X, user wants to trade on chain Y → bridge via
   `openfin-relay`.
-- USDC on Arbitrum → Hyperliquid → use `GET /agent/trading/deposit-address`.
-  Hyperliquid takes **only USDC** (not USDT, not USDC.e).
+- USDC on Arbitrum (or any chain) → Hyperliquid: move it with
+  `openfin-relay` to destination chain `1337` (Perps USDC), recipient left
+  empty. Onramping to the user's address on Arbitrum does **not** put it on
+  Hyperliquid by itself. Hyperliquid takes **only USDC** (not USDT, not
+  USDC.e).
 - **INR → Hyperliquid**: Onramp.money INR → USDC on Polygon or BSC →
-  `openfin-relay` to Arbitrum → Hyperliquid deposit address.
+  `openfin-relay` to Hyperliquid (destination chain `1337`), recipient =
+  the user's own address.
 - USDC on Polygon → Polymarket → swap to pUSD and route to the
   deposit wallet (`GET /agent/polymarket/deposit-wallet`).
 
