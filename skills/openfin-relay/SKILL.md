@@ -130,6 +130,14 @@ pUSD `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`, and the deposit wallet
 (`GET /agent/polymarket/deposit-wallet`) as `recipient`. Never deliver
 any other token to it, and warn the user: "Only deposit pUSD on Polygon to your Polymarket wallet. Funds sent on the wrong network or as the wrong token cannot be recovered."
 
+**Into Hyperliquid** (funding trades): `destinationChainId: 1337`,
+`destinationCurrency: "0x00000000000000000000000000000000"` (Perps USDC),
+`recipient` left empty so it lands in the user's own Hyperliquid account.
+If the wallet has no gas token on the origin chain, pass
+`usePermit: true`: the wallet signs a permit for free and Relay pays the
+gas, taking a small fee from the amount. Never send to a Hyperliquid bridge
+contract instead.
+
 ## Chain ID cheatsheet
 
 | Chain | ID | | Chain | ID |
